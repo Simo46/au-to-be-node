@@ -8,7 +8,6 @@ services:
     working_dir: /usr/src/app
     volumes:
       - ./src:/usr/src/app
-      - /usr/src/app/node_modules
     ports:
       - "3000:3000"
     environment:
@@ -28,6 +27,10 @@ services:
     depends_on:
       - db
       - redis
+    # Manteniamo queste opzioni per la stabilità del container
+    tty: true
+    stdin_open: true
+    command: sh -c "tail -f /dev/null"
 
   db:
     image: postgres:17-alpine
