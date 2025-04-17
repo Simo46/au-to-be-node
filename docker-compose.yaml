@@ -1,0 +1,65 @@
+services:
+  api:
+    build:
+      context: .
+      dockerfile: .docker/node/Dockerfile
+    container_name: au-to-be-node-api
+    restart: unless-stopped
+    working_dir: /usr/src/app
+    volumes:
+      - ./src:/usr/src/app
+      - /usr/src/app/node_modules
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=development
+      - DB_HOST=db
+      - DB_PORT=5432
+      - DB_USER=${DB_USERNAME}
+      - DB_PASSWORD=${DB_PASSWORD}
+      - DB_NAME=${DB_DATABASE}
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+    networks:
+      - autobe-network
+    dns:
+      - 8.8.8.8
+      - 1.1.1.1
+    depends_on:
+      - db
+      - redis
+
+  db:
+    image: postgres:17-alpine
+    container_name: au-to-be-node-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${DB_DATABASE}
+      POSTGRES_USER: ${DB_USERNAME}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+    ports:
+      - "${DB_PORT}:5432"
+    volumes:
+      - autobe-postgres-data:/var/lib/postgresql/data
+      - ./.docker/postgres/init:/docker-entrypoint-initdb.d
+    networks:
+      - autobe-network
+
+  redis:
+    image: redis:alpine
+    container_name: au-to-be-node-redis
+    restart: unless-stopped
+    ports:
+      - "${REDIS_PORT}:6379"
+    volumes:
+      - autobe-redis-data:/data
+    networks:
+      - autobe-network
+
+networks:
+  autobe-network:
+    driver: bridge
+
+volumes:
+  autobe-postgres-data:
+  autobe-redis-data:
