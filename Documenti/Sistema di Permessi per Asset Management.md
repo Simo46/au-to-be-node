@@ -149,3 +149,29 @@ Il sistema prevede i seguenti ruoli con permessi specifici:
 | Allegare DDT | ✓ | ✓ | ✓ | ✗ | ✓ | ✓ | ✓ |
 | Gestione utenti e ruoli | ✓ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ |
 | Configurazione sistema | ✓ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ |
+
+## Note Implementative
+
+Per implementare efficacemente questo sistema di permessi, si consiglia di:
+
+1. **Utilizzare Model Policies**:
+   - Creare policy specifiche per ciascun modello (Filiale, Asset, Fornitore, ecc.)
+   - Definire metodi corrispondenti alle azioni (visualizzazione, creazione, modifica, ecc.)
+
+2. **Implementare un sistema di ruoli e permessi gerarchico**:
+   - Utilizzare pacchetti come casl
+   - Definire permessi atomici che possono essere combinati in ruoli
+   - Supportare ereditarietà di permessi
+
+3. **Incorporare filtri di ambito**:
+   - Filtrare automaticamente i dati in base al ruolo dell'utente
+   - Implementare global scopes sui modelli per Area Manager (solo filiali della propria area)
+   - Implementare global scopes sui modelli per Responsabili (solo propria filiale)
+
+4. **Gestire permessi a livello di campo**:
+   - Implementare autorizzazioni specifiche per campi sensibili
+   - Nascondere/visualizzare campi specifici in base ai permessi dell'utente
+
+5. **Audit Trail**:
+   - Registrare tutte le azioni di modifica con utente, data e dettagli
+   - Implementare sistema di controllo accessi per tracciare chi visualizza/modifica cosa
