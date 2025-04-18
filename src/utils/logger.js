@@ -54,6 +54,7 @@ const createHttpLogger = () => {
     customProps: (req, res) => {
       return {
         requestId: req.id,
+        tenantId: req.tenantId || 'no-tenant', // Aggiungi l'ID del tenant ai log
         userAgent: req.headers['user-agent'],
         responseTime: res.responseTime,
       };
@@ -62,6 +63,18 @@ const createHttpLogger = () => {
     autoLogging: {
       ignore: (req) => req.url.includes('/api/health'),
     },
+    serializers: {
+      req: (req) => ({
+        method: req.method,
+        url: req.url,
+        tenantId: req.tenantId || 'no-tenant', // Aggiungi l'ID del tenant nei dettagli della richiesta
+        headers: {
+          'user-agent': req.headers['user-agent'],
+          'content-type': req.headers['content-type'],
+          'content-length': req.headers['content-length']
+        }
+      })
+    }
   });
 };
 

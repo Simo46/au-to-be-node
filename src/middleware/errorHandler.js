@@ -106,6 +106,15 @@ class AppError extends Error {
   static externalService(message = 'External Service Error') {
     return new AppError(message, 503, ErrorTypes.EXTERNAL_SERVICE);
   }
+
+  /**
+   * Create a tenant error
+   * @param {string} message - Error message
+   * @returns {AppError} - Tenant error
+   */
+  static tenant(message = 'Tenant Error') {
+    return new AppError(message, 400, ErrorTypes.TENANT);
+  }
 }
 
 /**
@@ -149,6 +158,13 @@ const handleJWTExpiredError = () => {
   return AppError.authentication('Your token has expired. Please log in again.');
 };
 
+ /**
+   * Handle tenant errors
+   */
+ const handleTenantError = (err) => {
+  return AppError.tenant(err.message || 'Tenant not found or access denied');
+};
+
 /**
  * Global error handling middleware
  */
@@ -178,6 +194,8 @@ const errorHandler = (err, req, res, next) => {
     error = handleJWTError();
   } else if (error.name === 'TokenExpiredError') {
     error = handleJWTExpiredError();
+  } else if (error.name === 'TenantError') {
+    error = handleTenantError(err);
   }
 
   // Log the error
