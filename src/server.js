@@ -1,6 +1,7 @@
 const app = require('./app');
 const { createLogger } = require('./utils/logger');
 const { initializeApp } = require('./config/init');
+const { testConnection } = require('./config/database');
 
 // Load environment variables
 require('dotenv').config();
@@ -15,6 +16,14 @@ const PORT = process.env.PORT || 3000;
 const server = app.listen(PORT, async () => {
   logger.info(`Server running on port ${PORT}`);
   logger.info(`Environment: ${process.env.NODE_ENV || 'development'}`);
+  
+  // Test database connection
+  try {
+    await testConnection();
+    logger.info('Database connection established successfully');
+  } catch (error) {
+    logger.error('Failed to connect to the database');
+  }
   
   // Initialize application services
   await initializeApp();
@@ -34,6 +43,14 @@ process.on('unhandledRejection', (err) => {
 // Handle SIGTERM
 process.on('SIGTERM', () => {
   logger.info('👋 SIGTERM RECEIVED. Shutting down gracefully');
+  server.close(() => {
+    logger.info('💥 Process terminated!');
+  });
+});
+
+// Handle SIGINT
+process.on('SIGINT', () => {
+  logger.info('👋 SIGINT RECEIVED. Shutting down gracefully');
   server.close(() => {
     logger.info('💥 Process terminated!');
   });
