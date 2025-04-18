@@ -1,61 +1,57 @@
 services:
   api:
     build:
-      context: .
-      dockerfile: .docker/node/Dockerfile
-    container_name: au-to-be-node-api
-    restart: unless-stopped
+      context: ./src
+      dockerfile: ../.docker/node/Dockerfile
+    container_name: autobe-api
     working_dir: /usr/src/app
     volumes:
       - ./src:/usr/src/app
+      - /usr/src/app/node_modules
     ports:
       - "3000:3000"
     environment:
       - NODE_ENV=development
-      - DB_HOST=db
+      - PORT=3000
+      - DB_HOST=postgres
       - DB_PORT=5432
-      - DB_USER=${DB_USERNAME}
-      - DB_PASSWORD=${DB_PASSWORD}
-      - DB_NAME=${DB_DATABASE}
+      - DB_DATABASE=autobe
+      - DB_USERNAME=autobeuser
+      - DB_PASSWORD=secret
       - REDIS_HOST=redis
       - REDIS_PORT=6379
+    depends_on:
+      - postgres
+      - redis
+    command: npm run dev
+    restart: unless-stopped
     networks:
       - autobe-network
-    dns:
-      - 8.8.8.8
-      - 1.1.1.1
-    depends_on:
-      - db
-      - redis
-    # Manteniamo queste opzioni per la stabilità del container
-    tty: true
-    stdin_open: true
-    command: sh -c "tail -f /dev/null"
 
-  db:
+  postgres:
     image: postgres:17-alpine
-    container_name: au-to-be-node-db
-    restart: unless-stopped
-    environment:
-      POSTGRES_DB: ${DB_DATABASE}
-      POSTGRES_USER: ${DB_USERNAME}
-      POSTGRES_PASSWORD: ${DB_PASSWORD}
+    container_name: autobe-postgres
     ports:
-      - "${DB_PORT}:5432"
+      - "5444:5432"
+    environment:
+      - POSTGRES_USER=autobeuser
+      - POSTGRES_PASSWORD=secret
+      - POSTGRES_DB=autobe
     volumes:
-      - autobe-postgres-data:/var/lib/postgresql/data
+      - postgres_data:/var/lib/postgresql/data
       - ./.docker/postgres/init:/docker-entrypoint-initdb.d
+    restart: unless-stopped
     networks:
       - autobe-network
 
   redis:
     image: redis:alpine
-    container_name: au-to-be-node-redis
-    restart: unless-stopped
+    container_name: autobe-redis
     ports:
-      - "${REDIS_PORT}:6379"
+      - "6389:6379"
     volumes:
-      - autobe-redis-data:/data
+      - redis_data:/data
+    restart: unless-stopped
     networks:
       - autobe-network
 
@@ -64,5 +60,5 @@ networks:
     driver: bridge
 
 volumes:
-  autobe-postgres-data:
-  autobe-redis-data:
+  postgres_data:
+  redis_data:

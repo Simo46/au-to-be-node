@@ -6,9 +6,11 @@ au-to-be-node è il backend per un sistema di Asset Management progettato per co
 
 ### Stack tecnologico
 
-- **Backend**: Node.js 22 + Express.js
+- **Backend**: Node.js 22 + Express 5
 - **Database**: PostgreSQL 17
 - **Cache**: Redis
+- **ORM**: Sequelize 6
+- **Logging**: Pino (logging strutturato in formato JSON)
 - **Containerizzazione**: Docker e Docker Compose
 - **Versionamento**: Git con Git Flow
 
@@ -46,7 +48,7 @@ git checkout develop
 
 ```bash
 # Costruisci e avvia i container
-docker compose up -d --build
+docker compose up -d
 
 # Verifica che i container siano in esecuzione
 docker compose ps
@@ -57,6 +59,13 @@ docker compose ps
 ```bash
 # Accedi al container dell'API
 docker compose exec api sh
+```
+
+### Verifica del funzionamento
+
+Per verificare che il server sia in funzione, visita:
+```
+http://localhost:3000/api/health
 ```
 
 ## Struttura del progetto
@@ -80,10 +89,15 @@ au-to-be-node/
 │   ├── server.js          # Entry point dell'applicazione
 │   ├── api/               # API routes e controller
 │   ├── config/            # Configurazioni applicazione
+│   │   ├── database.js    # Configurazione Sequelize
+│   │   ├── redis.js       # Configurazione Redis
+│   │   └── init.js        # Inizializzazione servizi
 │   ├── models/            # Modelli dati e ORM
 │   ├── services/          # Business logic
 │   ├── middleware/        # Middleware personalizzati
+│   │   └── errorHandler.js # Gestione centralizzata errori
 │   └── utils/             # Funzioni di utilità
+│       └── logger.js      # Configurazione Pino logger
 ├── docker-compose.yaml    # Configurazione Docker Compose
 ├── .env                   # Variabili d'ambiente (non committato)
 ├── .env.example           # Template variabili d'ambiente
@@ -132,69 +146,8 @@ docker compose down
 docker compose up -d --build
 ```
 
-### Sviluppo
+### Problemi di permessi
 
-All'interno del container `api`:
-
-```bash
-# Installare nuove dipendenze
-npm install <nome-pacchetto>
-
-# Avviare il server in modalità sviluppo
-npm run dev
-
-# Eseguire i test
-npm test
-
-# Lint del codice
-npm run lint
-```
-
-## Documentazione aggiuntiva
-
-Per maggiori dettagli, consulta i documenti nella cartella `Documenti/`:
-
-- **Piano di sviluppo.md**: Timeline e roadmap del progetto
-- **Sistema di Permessi per Asset Management.md**: Dettagli sul sistema di permessi
-- **specifiche-asset-management.md**: Specifiche tecniche generali
-- **specifiche-dettagliate.md**: Specifiche tecniche dettagliate
-
-## API
-
-L'API sarà disponibile all'indirizzo `http://localhost:3000/api`.
-
-Per verificare che il server sia in funzione, visita:
-```
-http://localhost:3000/api/health
-```
-
-## Database
-
-Il database PostgreSQL è accessibile attraverso:
-- Host: `localhost`
-- Porta: `5444` (o quella specificata in `.env`)
-- Database: `autobe`
-- Utente: `autobeuser` (o quello specificato in `.env`)
-- Password: `secret` (o quella specificata in `.env`)
-
-## Workflow per l'implementazione delle funzionalità
-
-1. **Analisi delle specifiche**: Consulta i documenti nella cartella `Documenti/`
-2. **Pianificazione**: Identifica le dipendenze e il percorso critico
-3. **Sviluppo**: Segui l'architettura pulita (controller → service → model)
-4. **Test**: Crea test unitari e di integrazione
-5. **Documentazione**: Aggiorna la documentazione API
-
-## Note per lo sviluppo
-
-- **Architettura pulita**: Separa chiaramente le responsabilità tra controller, servizi e modelli
-- **Consistenza nei nomi**: Segui le convenzioni di naming stabilite
-- **Documentazione**: Documenta le nuove API man mano che vengono sviluppate
-- **Error handling**: Implementa sempre una gestione degli errori appropriata
-
-## Troubleshooting
-
-### Problemi di permessi nei file
 Se riscontri problemi di permessi nei file all'interno del container:
 
 ```bash
@@ -205,6 +158,27 @@ docker compose exec -u root api sh
 chown -R 1000:1000 /usr/src/app
 ```
 
+## Documentazione aggiuntiva
+
+Per maggiori dettagli sul progetto:
+
+- **Stack Tecnologico - Guida Rapida**: Informazioni sulle librerie e le tecnologie utilizzate
+- **Piano di sviluppo.md**: Timeline e roadmap del progetto
+- **Sistema di Permessi per Asset Management.md**: Dettagli sul sistema di permessi
+- **specifiche-asset-management.md**: Specifiche tecniche generali
+- **specifiche-dettagliate.md**: Specifiche tecniche dettagliate
+
+## Database
+
+Il database PostgreSQL è accessibile attraverso:
+- Host: `postgres` (all'interno della rete Docker) o `localhost` (dall'esterno)
+- Porta: `5432` (all'interno della rete Docker) o `5444` (mappata all'esterno)
+- Database: `autobe`
+- Utente: `autobeuser`
+- Password: `secret` (o quella specificata in `.env`)
+
+## Troubleshooting
+
 ### Container non si avvia
 Verifica i log:
 
@@ -214,3 +188,8 @@ docker compose logs api
 
 ### Database non raggiungibile
 Controlla le variabili d'ambiente nel file `.env` e assicurati che corrispondano alle impostazioni in `docker-compose.yaml`.
+
+### Riferimenti alle porte
+- Express.js: 3000
+- PostgreSQL: 5444 (mappata esternamente) -> 5432 (internamente)
+- Redis: 6389 (mappata esternamente) -> 6379 (internamente)

@@ -1,18 +1,20 @@
 FROM node:22-alpine
 
-# Installa dipendenze essenziali
-RUN apk add --no-cache \
-    postgresql-client \
-    curl \
-    bash
-
-# Imposta il working directory
+# Create app directory
 WORKDIR /usr/src/app
 
-# Non cambiamo utente, usiamo root
+# Install app dependencies
+COPY package*.json ./
+RUN npm install
 
-# Espone la porta 3000
+# Install global development tools
+RUN npm install -g nodemon pino-pretty
+
+# Bundle app source
+COPY . .
+
+# Expose port
 EXPOSE 3000
 
-# Comando predefinito
-CMD ["sh", "-c", "tail -f /dev/null"]
+# Run the app
+CMD ["npm", "run", "dev"]
