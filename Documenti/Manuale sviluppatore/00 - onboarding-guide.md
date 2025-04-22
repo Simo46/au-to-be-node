@@ -162,7 +162,7 @@ chown -R 1000:1000 /usr/src/app
 
 Per maggiori dettagli sul progetto:
 
-- **Stack Tecnologico - Guida Rapida**: Informazioni sulle librerie e le tecnologie utilizzate
+- **tech-stack-guide**: Informazioni sulle librerie e le tecnologie utilizzate
 - **Piano di sviluppo.md**: Timeline e roadmap del progetto
 - **Sistema di Permessi per Asset Management.md**: Dettagli sul sistema di permessi
 - **specifiche-asset-management.md**: Specifiche tecniche generali
