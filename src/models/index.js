@@ -1,45 +1,80 @@
+'use strict';
+
 const fs = require('fs');
 const path = require('path');
-const { sequelize } = require('../config/database');
+const Sequelize = require('sequelize');
+const process = require('process');
+const basename = path.basename(__filename);
+const env = process.env.NODE_ENV || 'development';
+const config = require(__dirname + '/../config/sequelize-cli.js')[env];
+const setupTenantHooks = require('../config/sequelize-hooks');
 const { createLogger } = require('../utils/logger');
+const logger = createLogger('models:index');
 
-const logger = createLogger('models');
-const db = { sequelize };
+// Modelli da file singoli
+const importModels = [
+  'tenant',
+  'user',
+  'filiale',
+  'edificio',
+  'piano',
+  'locale',
+  'asset',
+  'attrezzatura',
+  'strumento-di-misura',
+  'impianto-tecnologico',
+];
 
-// Carica tutti i modelli dinamicamente dalla cartella models
-const loadModels = () => {
-  // Ottieni tutti i file nella cartella corrente
-  const files = fs.readdirSync(__dirname)
-    .filter(file => 
-      file.indexOf('.') !== 0 && // Ignora i file nascosti
-      file !== 'index.js' &&    // Ignora questo file
-      file.slice(-3) === '.js'  // Solo file JS
-    );
+// Modelli raggruppati
+const lookupModelsFile = 'lookup-models.js';
+const historyModelsFile = 'history-models.js';
 
-  // Importa ogni modello
-  files.forEach(file => {
-    const modelPath = path.join(__dirname, file);
-    const model = require(modelPath)(sequelize);
-    
-    // Aggiungi il modello all'oggetto db
+const db = {};
+
+let sequelize;
+if (config.use_env_variable) {
+  sequelize = new Sequelize(process.env[config.use_env_variable], config);
+} else {
+  sequelize = new Sequelize(config.database, config.username, config.password, config);
+}
+
+// Configura hooks per multi-tenancy
+setupTenantHooks(sequelize);
+
+// Importa modelli da file singoli
+importModels.forEach(modelName => {
+  if (fs.existsSync(path.join(__dirname, `${modelName}.js`))) {
+    const model = require(path.join(__dirname, `${modelName}.js`))(sequelize, Sequelize.DataTypes);
     db[model.name] = model;
-    logger.debug(`Loaded model: ${model.name}`);
+  }
+});
+
+// Importa modelli raggruppati da lookup-models.js
+if (fs.existsSync(path.join(__dirname, lookupModelsFile))) {
+  const lookupModels = require(path.join(__dirname, lookupModelsFile))(sequelize, Sequelize.DataTypes);
+  Object.keys(lookupModels).forEach(modelName => {
+    db[modelName] = lookupModels[modelName];
   });
+}
 
-  // Configura le associazioni tra modelli
-  Object.values(db)
-    .filter(model => typeof model.associate === 'function')
-    .forEach(model => {
-      model.associate(db);
-      logger.debug(`Set up associations for model: ${model.name}`);
-    });
+// Importa modelli raggruppati da history-models.js
+if (fs.existsSync(path.join(__dirname, historyModelsFile))) {
+  const historyModels = require(path.join(__dirname, historyModelsFile))(sequelize, Sequelize.DataTypes);
+  Object.keys(historyModels).forEach(modelName => {
+    db[modelName] = historyModels[modelName];
+  });
+}
 
-  logger.info('All models loaded successfully');
-  return db;
-};
+// Configura le associazioni tra i modelli
+Object.keys(db).forEach(modelName => {
+  if (db[modelName].associate) {
+    db[modelName].associate(db);
+  }
+});
 
-// Esporta i modelli e la funzione di caricamento
-module.exports = {
-  models: loadModels(),
-  sequelize
-};
+db.sequelize = sequelize;
+db.Sequelize = Sequelize;
+
+logger.info('Models loaded successfully');
+
+module.exports = db;
