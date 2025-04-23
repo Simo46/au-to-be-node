@@ -2,7 +2,9 @@
 const express = require('express');
 const cors = require('cors');
 const helmet = require('helmet');
+const passport = require('passport');
 const configurePassport = require('./config/passport');
+const dbContextMiddleware = require('./middleware/db-context');
 
 // Import error handler - con Express 5 non serve più express-async-errors
 const { errorHandler } = require('./middleware/errorHandler');
@@ -53,6 +55,8 @@ app.use(new RegExp(`^${apiPrefix}(?!/health)`), tenantMiddleware);
 // Aggiungi il logger di risposta dopo il middleware tenant
 app.use(createResponseLogger());
 
+app.use(dbContextMiddleware);
+
 // Pass tenant info to sequelize options for all routes
 app.use((req, res, next) => {
   if (req.tenantId) {
@@ -67,6 +71,7 @@ app.use((req, res, next) => {
 // app.use('/api/assets', require('./api/routes/assetRoutes'));
 // app.use('/api/locations', require('./api/routes/locationRoutes'));
 app.use('/api/auth-test', require('./api/routes/authTest'));
+app.use('/api/test-permissions', require('./api/routes/permissionTestRoutes'));
 
 // 404 handler
 app.use((req, res) => {

@@ -44,6 +44,12 @@ module.exports = (app) => {
         return done(null, false, { message: 'Token non più valido, necessario nuovo login' });
       }
 
+      // Verifica che il tenant dell'utente sia lo stesso di quello specificato nel token
+      if (payload.tenant_id && user.tenant_id && payload.tenant_id !== user.tenant_id) {
+        logger.warn(`Autenticazione fallita: token emesso per un altro tenant`);
+        return done(null, false, { message: 'Token non valido per questo tenant' });
+      }
+
       // Autenticazione riuscita, passa l'utente
       logger.debug(`Autenticazione riuscita per l'utente ${user.username}`);
       return done(null, user);
