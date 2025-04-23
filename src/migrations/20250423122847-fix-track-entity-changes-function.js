@@ -3,60 +3,12 @@
 /** @type {import('sequelize-cli').Migration} */
 module.exports = {
   async up(queryInterface, Sequelize) {
-    // Prima prova a vedere quali metodi di generazione UUID sono disponibili
-    const [uuidFunctionResult] = await queryInterface.sequelize.query(`
-      -- Prova prima a vedere se PostgreSQL ha la funzione nativa (13+)
-      SELECT 'native' as type FROM pg_proc WHERE proname = 'gen_random_uuid' AND prokind = 'f'
-      UNION
-      -- Controlla se uuid-ossp è già installata
-      SELECT 'uuid-ossp' as type FROM pg_extension WHERE extname = 'uuid-ossp'
-      UNION
-      -- Controlla se pgcrypto è disponibile
-      SELECT 'pgcrypto' as type FROM pg_extension WHERE extname = 'pgcrypto'
-      LIMIT 1;
-    `);
-
-    let uuidFunction;
-    
-    if (uuidFunctionResult.length === 0) {
-      // Nessun generatore UUID trovato, proviamo a installare le estensioni
-      try {
-        // Prova prima uuid-ossp
-        await queryInterface.sequelize.query(`CREATE EXTENSION IF NOT EXISTS "uuid-ossp";`);
-        uuidFunction = 'gen_random_uuid()';
-      } catch (error) {
-        try {
-          // Se fallisce, prova pgcrypto
-          await queryInterface.sequelize.query(`CREATE EXTENSION IF NOT EXISTS "pgcrypto";`);
-          uuidFunction = 'gen_random_uuid()';
-        } catch (pgcryptoError) {
-          // Se anche pgcrypto fallisce, usa una soluzione lato applicazione
-          console.warn('WARNING: Neither uuid-ossp nor pgcrypto extension available. UUID generation will be handled by the application.');
-          uuidFunction = 'NULL'; // Il valore sarà gestito dall'applicazione
-        }
-      }
-    } else {
-      // Usa la funzione trovata
-      switch (uuidFunctionResult[0].type) {
-        case 'native':
-          uuidFunction = 'gen_random_uuid()';
-          break;
-        case 'uuid-ossp':
-          uuidFunction = 'gen_random_uuid()';
-          break;
-        case 'pgcrypto':
-          uuidFunction = 'gen_random_uuid()';
-          break;
-        default:
-          uuidFunction = 'NULL'; // Fallback
-      }
-    }
-
-    // Funzione per il tracciamento generico delle modifiche
+    // Aggiorna la funzione track_entity_changes con la versione corretta
     await queryInterface.sequelize.query(`
-      -- Funzione per tracciare le modifiche nelle tabelle
-      CREATE OR REPLACE FUNCTION track_entity_changes()
-      RETURNS TRIGGER AS $$
+      CREATE OR REPLACE FUNCTION public.track_entity_changes()
+      RETURNS trigger
+      LANGUAGE plpgsql
+      AS $function$
       DECLARE
         history_table_name TEXT;
         entity_id_column TEXT;
@@ -68,9 +20,7 @@ module.exports = {
         new_id UUID;
       BEGIN
         -- Genera nuovo ID per l'entry history
-        ${uuidFunction === 'NULL' 
-          ? '-- UUID sarà gestito dall\'applicazione' 
-          : `new_id := ${uuidFunction};`}
+        new_id := gen_random_uuid();
         
         -- Inizializza il nome della tabella di history
         IF TG_TABLE_NAME = 'assets' THEN
@@ -132,10 +82,10 @@ module.exports = {
             old_values := jsonb_object_agg(k, old_values->k) FROM unnest(differing_keys) AS k;
             new_values := jsonb_object_agg(k, new_values->k) FROM unnest(differing_keys) AS k;
             
-            -- Inserisci nella tabella di history
+            -- Inserisci nella tabella di history con cast espliciti
             EXECUTE format(
               'INSERT INTO %I (id, %I, tenant_id, user_id, action, old_values, new_values, created_at, updated_at) 
-               VALUES ($1, $2, $3, $4, $5, $6, $7, NOW(), NOW())',
+               VALUES ($1::uuid, $2::uuid, $3::uuid, $4::uuid, $5::text, $6::jsonb, $7::jsonb, NOW(), NOW())',
               history_table_name,
               entity_id_column
             ) USING 
@@ -157,10 +107,13 @@ module.exports = {
         
         -- Se si tratta di un'operazione DELETE
         ELSIF (TG_OP = 'DELETE') THEN
-          -- Inserisci nella tabella di history
+          -- Converti OLD in JSONB
+          old_values := to_jsonb(OLD);
+          
+          -- Inserisci nella tabella di history con cast espliciti
           EXECUTE format(
             'INSERT INTO %I (id, %I, tenant_id, user_id, action, old_values, new_values, created_at, updated_at) 
-             VALUES ($1, $2, $3, $4, $5, $6, $7, NOW(), NOW())',
+             VALUES ($1::uuid, $2::uuid, $3::uuid, $4::uuid, $5::text, $6::jsonb, $7::jsonb, NOW(), NOW())',
             history_table_name,
             entity_id_column
           ) USING 
@@ -169,15 +122,18 @@ module.exports = {
             OLD.tenant_id,         -- tenant_id
             current_user_id,       -- user_id
             'delete',              -- action
-            to_jsonb(OLD),         -- old_values
-            NULL;                  -- new_values (NULL perché il record è stato eliminato)
+            old_values,            -- old_values
+            NULL::jsonb;           -- new_values (NULL perché il record è stato eliminato)
         
         -- Se si tratta di un'operazione INSERT
         ELSIF (TG_OP = 'INSERT') THEN
-          -- Inserisci nella tabella di history
+          -- Converti NEW in JSONB
+          new_values := to_jsonb(NEW);
+          
+          -- Inserisci nella tabella di history con cast espliciti
           EXECUTE format(
             'INSERT INTO %I (id, %I, tenant_id, user_id, action, old_values, new_values, created_at, updated_at) 
-             VALUES ($1, $2, $3, $4, $5, $6, $7, NOW(), NOW())',
+             VALUES ($1::uuid, $2::uuid, $3::uuid, $4::uuid, $5::text, $6::jsonb, $7::jsonb, NOW(), NOW())',
             history_table_name,
             entity_id_column
           ) USING 
@@ -186,8 +142,8 @@ module.exports = {
             NEW.tenant_id,         -- tenant_id
             current_user_id,       -- user_id
             'create',              -- action
-            NULL,                  -- old_values (NULL perché è una creazione)
-            to_jsonb(NEW);         -- new_values
+            NULL::jsonb,           -- old_values (NULL perché è una creazione)
+            new_values;            -- new_values
             
           -- Imposta created_by se non è specificato
           IF NEW.created_by IS NULL THEN
@@ -202,99 +158,47 @@ module.exports = {
         
         RETURN NEW;
       END;
-      $$ LANGUAGE plpgsql;
+      $function$;
     `);
 
-    // Crea i trigger per ogni tabella principale che richiede tracciamento
-    const tables = [
-      'abilities',
-      'assets',
-      'assets_history',
-      'attrezzature',
-      'categorie_attrezzature',
-      'categorie_impianti_tecnologici',
-      'categorie_strumenti_misura',
-      'edifici',
-      'edifici_history',
-      'filiali',
-      'filiali_history',
-      'fornitori',
-      'impianti_tecnologici',
-      'locali',
-      'locali_history',
-      'piani',
-      'piani_history',
-      'roles',
-      'stati_dotazione',
-      'stati_interventi',
-      'strumenti_di_misura',
-      'tenants',
-      'tipi_alimentazione',
-      'tipi_possesso',
-      'users',
-      'user_roles'
-    ];
-
-    for (const table of tables) {
-      // Trigger BEFORE INSERT/UPDATE
+    // Ricrea i trigger principali per tabelle che hanno history
+    const tablesWithHistory = ['assets', 'filiali', 'edifici', 'piani', 'locali'];
+    
+    for (const table of tablesWithHistory) {
+      // Modifica i trigger principali in AFTER INSERT per evitare violazioni di foreign key
       await queryInterface.sequelize.query(`
+        -- Elimina i trigger esistenti
         DROP TRIGGER IF EXISTS ${table}_before_changes_trigger ON ${table};
-        CREATE TRIGGER ${table}_before_changes_trigger
-        BEFORE INSERT OR UPDATE ON ${table}
+        
+        -- Ricrea il trigger per UPDATE (rimane BEFORE)
+        CREATE TRIGGER ${table}_before_update_trigger
+        BEFORE UPDATE ON ${table}
         FOR EACH ROW EXECUTE FUNCTION track_entity_changes();
-      `);
-
-      // Trigger AFTER DELETE (deve essere AFTER perché in BEFORE il record non è ancora realmente eliminato)
-      await queryInterface.sequelize.query(`
-        DROP TRIGGER IF EXISTS ${table}_after_delete_trigger ON ${table};
-        CREATE TRIGGER ${table}_after_delete_trigger
-        AFTER DELETE ON ${table}
+        
+        -- Crea il trigger per INSERT come AFTER
+        CREATE TRIGGER ${table}_after_insert_trigger
+        AFTER INSERT ON ${table}
         FOR EACH ROW EXECUTE FUNCTION track_entity_changes();
       `);
     }
   },
 
   async down(queryInterface, Sequelize) {
-    // Rimuovi i trigger da ogni tabella
-    const tables = [
-      'abilities',
-      'assets',
-      'assets_history',
-      'attrezzature',
-      'categorie_attrezzature',
-      'categorie_impianti_tecnologici',
-      'categorie_strumenti_misura',
-      'edifici',
-      'edifici_history',
-      'filiali',
-      'filiali_history',
-      'fornitori',
-      'impianti_tecnologici',
-      'locali',
-      'locali_history',
-      'piani',
-      'piani_history',
-      'roles',
-      'stati_dotazione',
-      'stati_interventi',
-      'strumenti_di_misura',
-      'tenants',
-      'tipi_alimentazione',
-      'tipi_possesso',
-      'users',
-      'user_roles'
-    ];
-
-    for (const table of tables) {
+    // Ripristina la versione originale della funzione e dei trigger se necessario
+    // Questa è una versione semplificata del down che ripristina solo i trigger principali
+    const tablesWithHistory = ['assets', 'filiali', 'edifici', 'piani', 'locali'];
+    
+    for (const table of tablesWithHistory) {
       await queryInterface.sequelize.query(`
-        DROP TRIGGER IF EXISTS ${table}_before_changes_trigger ON ${table};
-        DROP TRIGGER IF EXISTS ${table}_after_delete_trigger ON ${table};
+        -- Elimina i trigger corretti
+        DROP TRIGGER IF EXISTS ${table}_before_update_trigger ON ${table};
+        DROP TRIGGER IF EXISTS ${table}_after_insert_trigger ON ${table};
+        
+        -- Ripristina il trigger BEFORE originale
+        CREATE TRIGGER ${table}_before_changes_trigger
+        BEFORE INSERT OR UPDATE ON ${table}
+        FOR EACH ROW EXECUTE FUNCTION track_entity_changes();
       `);
     }
-
-    // Rimuovi la funzione di tracking
-    await queryInterface.sequelize.query(`
-      DROP FUNCTION IF EXISTS track_entity_changes();
-    `);
   }
 };
