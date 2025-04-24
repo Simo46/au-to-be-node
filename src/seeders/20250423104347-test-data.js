@@ -181,6 +181,184 @@ module.exports = {
       }
       
       // =====================================================================
+      // 3.1 SETUP ABILITIES - Nuova sezione per configurare le abilities dei ruoli
+      // =====================================================================
+      
+      console.log('Configurazione abilities per i ruoli...');
+      
+      // Elimina prima tutte le abilities esistenti per ricominciare da zero
+      await queryInterface.sequelize.query(`DELETE FROM abilities`);
+      
+      // Definizione delle abilities per ciascun ruolo
+      const roleAbilities = {
+        'Amministratore di Sistema': [
+          // Admin ha potere di fare tutto
+          { action: 'manage', subject: 'all', inverted: false, reason: 'Admin può fare tutto' }
+        ],
+        'Ufficio Tecnico': [
+          // Gestione complete asset e location
+          { action: 'manage', subject: 'Asset', inverted: false },
+          { action: 'manage', subject: 'Attrezzatura', inverted: false },
+          { action: 'manage', subject: 'StrumentoDiMisura', inverted: false },
+          { action: 'manage', subject: 'ImpiantoTecnologico', inverted: false },
+          { action: 'manage', subject: 'Filiale', inverted: false },
+          { action: 'manage', subject: 'Edificio', inverted: false },
+          { action: 'manage', subject: 'Piano', inverted: false },
+          { action: 'manage', subject: 'locale', inverted: false },
+          { action: 'manage', subject: 'Fornitore', inverted: false },
+          
+          // Gestione utenti completa - può creare, leggere, aggiornare, eliminare utenti
+          { action: 'manage', subject: 'User', inverted: false, reason: 'Ufficio Tecnico può gestire tutti gli utenti' },
+          
+          // Lettura ruoli
+          { action: 'read', subject: 'Role', inverted: false }
+        ],
+        'Ufficio Post Vendita': [
+          // Lettura completa
+          { action: 'read', subject: 'Asset', inverted: false },
+          { action: 'read', subject: 'Attrezzatura', inverted: false },
+          { action: 'read', subject: 'StrumentoDiMisura', inverted: false },
+          { action: 'read', subject: 'ImpiantoTecnologico', inverted: false },
+          { action: 'read', subject: 'Filiale', inverted: false },
+          { action: 'read', subject: 'Edificio', inverted: false },
+          { action: 'read', subject: 'Piano', inverted: false },
+          { action: 'read', subject: 'locale', inverted: false },
+          { action: 'read', subject: 'Fornitore', inverted: false },
+          
+          // Modifica asset
+          { action: 'update', subject: 'Asset', inverted: false },
+          { action: 'update', subject: 'Attrezzatura', inverted: false },
+          { action: 'update', subject: 'StrumentoDiMisura', inverted: false },
+          { action: 'update', subject: 'ImpiantoTecnologico', inverted: false },
+          
+          // Gestione utenti completa - può creare, leggere, aggiornare, eliminare utenti
+          { action: 'manage', subject: 'User', inverted: false, reason: 'Ufficio Post Vendita può gestire tutti gli utenti' },
+          
+          // Lettura ruoli
+          { action: 'read', subject: 'Role', inverted: false }
+        ],
+        'Area Manager': [
+          // Lettura filiali (filtrata per area in Conditions)
+          { action: 'read', subject: 'Filiale', inverted: false },
+          { action: 'read', subject: 'Edificio', inverted: false },
+          { action: 'read', subject: 'Piano', inverted: false },
+          { action: 'read', subject: 'locale', inverted: false },
+          
+          // Lettura e modifica asset (filtrati per area)
+          { action: 'read', subject: 'Asset', inverted: false },
+          { action: 'read', subject: 'Attrezzatura', inverted: false },
+          { action: 'read', subject: 'StrumentoDiMisura', inverted: false },
+          { action: 'read', subject: 'ImpiantoTecnologico', inverted: false },
+          { action: 'update', subject: 'Asset', inverted: false },
+          { action: 'update', subject: 'Attrezzatura', inverted: false },
+          { action: 'update', subject: 'StrumentoDiMisura', inverted: false },
+          { action: 'update', subject: 'ImpiantoTecnologico', inverted: false },
+          
+          // Lettura fornitori
+          { action: 'read', subject: 'Fornitore', inverted: false },
+          
+          // Lettura utenti (filtrati per area) - RIMUOVERE ABILITÀ DI GESTIONE UTENTI
+          { action: 'read', subject: 'User', inverted: false },
+          
+          // Lettura ruoli
+          { action: 'read', subject: 'Role', inverted: false }
+        ],
+        'Responsabile Filiale': [
+          // Lettura propria filiale
+          { action: 'read', subject: 'Filiale', inverted: false },
+          { action: 'read', subject: 'Edificio', inverted: false },
+          { action: 'read', subject: 'Piano', inverted: false },
+          { action: 'read', subject: 'locale', inverted: false },
+          
+          // Gestione asset della propria filiale
+          { action: 'manage', subject: 'Asset', inverted: false },
+          { action: 'manage', subject: 'Attrezzatura', inverted: false },
+          { action: 'manage', subject: 'StrumentoDiMisura', inverted: false },
+          { action: 'manage', subject: 'ImpiantoTecnologico', inverted: false },
+          
+          // Lettura asset di altre filiali
+          { action: 'read', subject: 'Asset', inverted: false },
+          { action: 'read', subject: 'Attrezzatura', inverted: false },
+          { action: 'read', subject: 'StrumentoDiMisura', inverted: false },
+          { action: 'read', subject: 'ImpiantoTecnologico', inverted: false },
+          
+          // Gestione fornitori
+          { action: 'read', subject: 'Fornitore', inverted: false },
+          { action: 'create', subject: 'Fornitore', inverted: false },
+          { action: 'update', subject: 'Fornitore', inverted: false },
+          
+          // RIMUOVERE ABILITÀ DI GESTIONE UTENTI - solo lettura degli utenti della propria filiale
+          { action: 'read', subject: 'User', inverted: false }
+        ],
+        'Responsabile Officina e Service': [
+          // Lettura propria filiale
+          { action: 'read', subject: 'Filiale', inverted: false },
+          { action: 'read', subject: 'Edificio', inverted: false },
+          { action: 'read', subject: 'Piano', inverted: false },
+          { action: 'read', subject: 'locale', inverted: false },
+          
+          // Gestione asset della propria filiale
+          { action: 'read', subject: 'Asset', inverted: false },
+          { action: 'update', subject: 'Asset', inverted: false },
+          { action: 'read', subject: 'Attrezzatura', inverted: false },
+          { action: 'update', subject: 'Attrezzatura', inverted: false },
+          { action: 'read', subject: 'StrumentoDiMisura', inverted: false },
+          { action: 'update', subject: 'StrumentoDiMisura', inverted: false },
+          { action: 'read', subject: 'ImpiantoTecnologico', inverted: false },
+          { action: 'update', subject: 'ImpiantoTecnologico', inverted: false },
+          
+          // Lettura asset di altre filiali
+          { action: 'read', subject: 'Asset', inverted: false },
+          { action: 'read', subject: 'Attrezzatura', inverted: false },
+          { action: 'read', subject: 'StrumentoDiMisura', inverted: false },
+          { action: 'read', subject: 'ImpiantoTecnologico', inverted: false },
+          
+          // Gestione fornitori
+          { action: 'read', subject: 'Fornitore', inverted: false },
+          { action: 'create', subject: 'Fornitore', inverted: false },
+          { action: 'update', subject: 'Fornitore', inverted: false }
+        ],
+        'Magazzino': [
+          // Accesso limitato all'inventario della propria filiale
+          { action: 'read', subject: 'Asset', inverted: false },
+          { action: 'update', subject: 'Asset', inverted: false },
+          { action: 'read', subject: 'Attrezzatura', inverted: false },
+          { action: 'read', subject: 'StrumentoDiMisura', inverted: false },
+          { action: 'read', subject: 'ImpiantoTecnologico', inverted: false }
+        ]
+      };
+      
+      // Crea abilities per ogni ruolo
+      for (const [roleName, abilities] of Object.entries(roleAbilities)) {
+        const roleId = roleIds[roleName];
+        
+        if (!roleId) {
+          console.warn(`Ruolo '${roleName}' non trovato, impossibile creare abilities`);
+          continue;
+        }
+        
+        for (const ability of abilities) {
+          await upsert(
+            'abilities',
+            {
+              role_id: roleId,
+              action: ability.action,
+              subject: ability.subject,
+              conditions: ability.conditions || null,
+              fields: ability.fields || null,
+              inverted: ability.inverted || false,
+              reason: ability.reason || null,
+              created_at: new Date(),
+              updated_at: new Date()
+            },
+            ['role_id', 'action', 'subject']
+          );
+        }
+        
+        console.log(`Abilities configurate per il ruolo '${roleName}'`);
+      }
+      
+      // =====================================================================
       // 4. SETUP FILIALI
       // =====================================================================
       
