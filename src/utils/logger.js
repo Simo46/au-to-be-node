@@ -34,51 +34,63 @@ const createLogger = (label) => {
 
 /**
  * Create HTTP logger middleware
+ * Nota: Questo è ancora utile per il debug ma non lo useremo per il logging delle risposte
  * @returns {function} Express middleware
  */
 const createHttpLogger = () => {
   return pinoHttp({
-    logger: createLogger('http'),
-    customLogLevel: (res, err) => {
-      if (err) return 'error';
-      if (res.statusCode >= 400 && res.statusCode < 500) return 'warn';
-      if (res.statusCode >= 500) return 'error';
-      return 'info';
-    },
-    customSuccessMessage: (req, res) => {
-      return `${req.method} ${req.url} ${res.statusCode}`;
-    },
-    customErrorMessage: (req, res, err) => {
-      return `${req.method} ${req.url} ${res.statusCode} - Error: ${err.message}`;
-    },
-    customProps: (req, res) => {
-      return {
-        requestId: req.id,
-        tenantId: req.tenantId || 'no-tenant', // Aggiungi l'ID del tenant ai log
-        userAgent: req.headers['user-agent'],
-        responseTime: res.responseTime,
-      };
-    },
-    // Don't log health check endpoint to reduce noise
+    logger: createLogger('http-request'),
     autoLogging: {
-      ignore: (req) => req.url.includes('/api/health'),
+      ignore: (req) => req.url.includes('/api/health')
     },
-    serializers: {
-      req: (req) => ({
-        method: req.method,
-        url: req.url,
-        tenantId: req.tenantId || 'no-tenant', // Aggiungi l'ID del tenant nei dettagli della richiesta
-        headers: {
-          'user-agent': req.headers['user-agent'],
-          'content-type': req.headers['content-type'],
-          'content-length': req.headers['content-length']
-        }
-      })
-    }
+    // Disabilitiamo il logging automatico delle risposte
+    customSuccessMessage: () => false,
+    customErrorMessage: () => false,
+    customReceivedMessage: (req) => `Ricevuta richiesta: ${req.method} ${req.url}`
   });
+};
+
+/**
+ * Create a response logger middleware
+ * Questo middleware registra le risposte dopo che tutti gli altri middleware sono stati applicati
+ * @returns {function} Express middleware
+ */
+const createResponseLogger = () => {
+  const logger = createLogger('http-response');
+  
+  return (req, res, next) => {
+    // Save original end method
+    const originalEnd = res.end;
+    const startTime = Date.now();
+    
+    // Override end method
+    res.end = function(chunk, encoding) {
+      // Restore original end method
+      res.end = originalEnd;
+      
+      // Call original end method
+      res.end(chunk, encoding);
+      
+      // Log response with appropriate level
+      const level = res.statusCode >= 500 ? 'error' : 
+                   res.statusCode >= 400 ? 'warn' : 'info';
+      
+      logger[level]({
+        method: req.method,
+        url: req.originalUrl || req.url,
+        statusCode: res.statusCode,
+        tenantId: req.tenantId || 'no-tenant',
+        responseTime: Date.now() - startTime,
+        userAgent: req.headers['user-agent']
+      }, `${req.method} ${req.originalUrl || req.url} ${res.statusCode}`);
+    };
+    
+    next();
+  };
 };
 
 module.exports = {
   createLogger,
   createHttpLogger,
+  createResponseLogger
 };

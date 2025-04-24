@@ -15,6 +15,9 @@ const logger = createLogger('models:index');
 const importModels = [
   'tenant',
   'user',
+  'role',        
+  'ability',     
+  'user-role',  
   'filiale',
   'edificio',
   'piano',

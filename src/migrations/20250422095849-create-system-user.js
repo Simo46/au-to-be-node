@@ -15,7 +15,7 @@ module.exports = {
       updated_at: new Date()
     }], {});
 
-    // Crea un ruolo per l'utente di sistema usando sequelize.literal invece di uuid_generate_v4()
+    // Crea un ruolo per l'utente di sistema usando sequelize.literal invece di gen_random_uuid()
     const [systemRole] = await queryInterface.sequelize.query(
       `INSERT INTO roles (id, name, description, created_at, updated_at)
        VALUES (gen_random_uuid(), 'system', 'System role for automated operations', NOW(), NOW())

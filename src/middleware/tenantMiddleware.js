@@ -1,68 +1,103 @@
-const { models } = require('../models');
+const { sequelize } = require('../models');
+const models = require('../models');
 const { createLogger } = require('../utils/logger');
 const logger = createLogger('tenant-middleware');
 
-/**
- * Middleware per identificare il tenant attuale in base al dominio della richiesta
- */
 const tenantMiddleware = async (req, res, next) => {
   try {
-    // Ottieni l'host dalla richiesta
-    const host = req.get('host');
+    // Log dettagliato per debugging
+    logger.debug(`Ricevuta richiesta: ${req.method} ${req.url}`);
+    
+    // BYPASS per testing - Per gli endpoint di test, consenti di procedere senza tenant
+    if (req.path.startsWith('/api/auth-test')) {
+      logger.debug('TEST MODE: Endpoint di test rilevato, bypassando controllo tenant');
+      req.tenantId = '00000000-0000-0000-0000-000000000000';
+      req.tenant = { id: req.tenantId, name: 'Test Tenant (Bypass)' };
+      req.sequelizeOptions = { tenantId: req.tenantId };
+      return next();
+    }
     
     // Per test e sviluppo, accetta un header X-Tenant-ID
     const tenantIdFromHeader = req.get('X-Tenant-ID');
     
     if (tenantIdFromHeader) {
-      logger.debug(`Using tenant ID from header: ${tenantIdFromHeader}`);
-      const tenant = await models.Tenant.findByPk(tenantIdFromHeader);
+      logger.debug(`Trovato header X-Tenant-ID: ${tenantIdFromHeader}`);
       
-      if (tenant && tenant.active) {
-        req.tenantId = tenant.id;
-        req.tenant = tenant;
-        return next();
+      try {
+        // Cerca il tenant usando il model direttamente
+        const tenant = await models.Tenant.findByPk(tenantIdFromHeader);
+        
+        if (tenant) {
+          logger.debug(`Tenant trovato: ${tenant.name} (${tenant.id})`);
+          if (tenant.active) {
+            req.tenantId = tenant.id;
+            req.tenant = tenant;
+            req.sequelizeOptions = { tenantId: tenant.id };
+            return next();
+          } else {
+            logger.warn(`Tenant non attivo: ${tenant.id}`);
+            return res.status(403).json({
+              error: 'Tenant inactive',
+              message: 'Il tenant specificato non è attivo'
+            });
+          }
+        } else {
+          logger.warn(`Tenant non trovato con ID: ${tenantIdFromHeader}`);
+          return res.status(404).json({
+            error: 'Tenant not found',
+            message: 'Il tenant specificato non esiste'
+          });
+        }
+      } catch (dbError) {
+        logger.error({ err: dbError }, 'Errore di database durante la ricerca del tenant');
+        return res.status(500).json({
+          error: 'Database error',
+          message: 'Errore durante la ricerca del tenant nel database',
+          details: process.env.NODE_ENV === 'development' ? dbError.message : undefined
+        });
       }
     }
     
-    // Estrai il sottodominio
-    // In produzione, l'URL potrebbe essere tenant1.app.com
+    // Procedura standard con host/subdomain se non c'è l'header
+    const host = req.get('host');
     const subdomain = host.split('.')[0];
     
-    logger.debug(`Looking up tenant with domain: ${subdomain}`);
+    logger.debug(`Cerco tenant per dominio: ${subdomain}`);
     
-    // Cerca il tenant nel database
-    const tenant = await models.Tenant.findOne({ 
-      where: { 
-        domain: subdomain,
-        active: true
-      } 
-    });
-    
-    if (!tenant) {
-      logger.warn(`Tenant not found for domain: ${subdomain}`);
-      return res.status(404).json({ 
-        error: 'Tenant not found',
-        message: 'The requested tenant does not exist or is inactive'
+    try {
+      const tenant = await models.Tenant.findOne({
+        where: {
+          domain: subdomain,
+          active: true
+        }
+      });
+      
+      if (!tenant) {
+        logger.warn(`Tenant non trovato per dominio: ${subdomain}`);
+        return res.status(404).json({
+          error: 'Tenant not found',
+          message: 'Il tenant richiesto non esiste o non è attivo'
+        });
+      }
+      
+      req.tenantId = tenant.id;
+      req.tenant = tenant;
+      req.sequelizeOptions = { tenantId: tenant.id };
+      return next();
+    } catch (dbError) {
+      logger.error({ err: dbError }, 'Errore di database durante la ricerca del tenant per dominio');
+      return res.status(500).json({
+        error: 'Database error',
+        message: 'Errore durante la ricerca del tenant nel database',
+        details: process.env.NODE_ENV === 'development' ? dbError.message : undefined
       });
     }
-    
-    // Aggiungi il tenant all'oggetto request
-    req.tenantId = tenant.id;
-    req.tenant = tenant;
-    
-    logger.debug(`Tenant identified: ${tenant.name} (${tenant.id})`);
-    
-    // Aggiungi opzioni Sequelize all'oggetto request
-    req.sequelizeOptions = { 
-      tenantId: tenant.id 
-    };
-    
-    return next();
   } catch (error) {
-    logger.error({ err: error }, 'Error identifying tenant');
-    return res.status(500).json({ 
+    logger.error({ err: error }, 'Errore generale nel middleware tenant');
+    return res.status(500).json({
       error: 'Internal server error',
-      message: 'An error occurred while identifying the tenant'
+      message: 'Si è verificato un errore durante l\'identificazione del tenant',
+      details: process.env.NODE_ENV === 'development' ? error.message : undefined
     });
   }
 };
