@@ -65,8 +65,8 @@ app.use((req, res, next) => {
   next();
 });
 
-// API routes will be defined here
-// app.use('/api/auth', require('./api/routes/authRoutes'));
+// API routes
+app.use('/api/auth', require('./api/routes/authRoutes'));
 // app.use('/api/users', require('./api/routes/userRoutes'));
 // app.use('/api/assets', require('./api/routes/assetRoutes'));
 // app.use('/api/locations', require('./api/routes/locationRoutes'));

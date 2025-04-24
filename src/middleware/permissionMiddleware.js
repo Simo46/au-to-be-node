@@ -37,18 +37,12 @@ const checkPermission = (action, subjectResolver, conditions = null) => {
         return next(AppError.authorization('Impossibile verificare i permessi'));
       }
 
-      // Aggiungi l'identificatore del tenant come condizione per il multi-tenancy se appropriato
-      const finalConditions = req.tenantId ? { tenant_id: req.tenantId, ...conditions } : conditions;
-
-      // Se il soggetto è un'istanza di un modello, aggiungiamo il tipo
-      if (typeof subject === 'object' && subject !== null && !subject.__type) {
-        subject.__type = subject.constructor.name;
-      }
-
       // Verifica i permessi
       const ability = await abilityService.defineAbilityFor(req.user);
       
-      if (ability.can(action, subject, finalConditions)) {
+      // IMPORTANTE: CASL gestisce le condizioni in modo diverso
+      // Non passiamo le condizioni come terzo argomento a can()
+      if (ability.can(action, subject)) {
         // Aggiungi l'ability all'oggetto request per utilizzo successivo
         req.ability = ability;
         logger.debug(`Permesso accordato: ${req.user.username} può ${action} su ${typeof subject === 'string' ? subject : subject.__type}`);
@@ -57,7 +51,7 @@ const checkPermission = (action, subjectResolver, conditions = null) => {
 
       // L'utente non ha i permessi necessari
       logger.warn(`Permesso negato: ${req.user.username} non può ${action} su ${typeof subject === 'string' ? subject : subject.__type}`);
-      return next(AppError.authorization(`Non hai i permessi per ${action} su ${typeof subject === 'string' ? subject : subject.constructor.name}`));
+      return next(AppError.authorization(`Non hai i permessi per ${action} su ${typeof subject === 'string' ? subject : (subject.__type || 'oggetto')}`));
     } catch (error) {
       logger.error({ err: error }, 'Errore durante il controllo dei permessi');
       return next(AppError.authorization('Errore durante la verifica dei permessi'));
