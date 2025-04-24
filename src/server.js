@@ -1,10 +1,10 @@
+// Load environment variables
+require('dotenv').config();
+
 const app = require('./app');
 const { createLogger } = require('./utils/logger');
 const { initializeApp } = require('./config/init');
 const { testConnection } = require('./config/database');
-
-// Load environment variables
-require('dotenv').config();
 
 // Initialize logger
 const logger = createLogger('server');

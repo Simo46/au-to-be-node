@@ -1,11 +1,11 @@
+// Load environment variables
+require('dotenv').config();
+
 const { Sequelize } = require('sequelize');
 const { createLogger } = require('../utils/logger');
 
 // Initialize logger
 const logger = createLogger('database');
-
-// Load environment variables
-require('dotenv').config();
 
 // Database configuration
 const config = {

@@ -5,6 +5,8 @@ services:
       dockerfile: ../.docker/node/Dockerfile
     container_name: autobe-api
     working_dir: /usr/src/app
+    env_file:
+      - .env  # attenzione: questo path è relativo alla `build.context` (./src), quindi devi salire
     volumes:
       - ./src:/usr/src/app
       - /usr/src/app/node_modules

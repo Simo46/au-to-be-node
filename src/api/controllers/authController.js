@@ -80,7 +80,7 @@ class AuthController {
         const tokens = jwtService.generateTokens(user);
 
         // Aggiorna il remember_token nel database
-        await user.update({ remember_token: tokens.refreshToken });
+        await user.update({ remember_token: tokens.refreshTokenId });
 
         logger.info(`Nuovo utente registrato: ${username}`);
 
@@ -154,7 +154,7 @@ class AuthController {
       const tokens = jwtService.generateTokens(user);
 
       // Aggiorna il remember_token nel database
-      await user.update({ remember_token: tokens.refreshToken });
+      await user.update({ remember_token: tokens.refreshTokenId });
 
       logger.info(`Login effettuato con successo: ${username}`);
 
@@ -234,7 +234,7 @@ class AuthController {
           id: decoded.sub,
           tenant_id: req.tenantId,
           active: true,
-          remember_token: refreshToken
+          remember_token: decoded.jti
         },
         include: [{
           model: Role,
@@ -253,7 +253,7 @@ class AuthController {
       const tokens = jwtService.generateTokens(user);
 
       // Aggiorna il remember_token nel database
-      await user.update({ remember_token: tokens.refreshToken });
+      await user.update({ remember_token: tokens.refreshTokenId });
 
       logger.info(`Token rinnovato per l'utente: ${user.username}`);
 
