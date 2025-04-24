@@ -12,8 +12,11 @@ const { errorHandler } = require('./middleware/errorHandler');
 // Import logger
 const { createHttpLogger, createResponseLogger } = require('./utils/logger');
 
-// Import tenant middleware
+// Import middleware tenant
 const tenantMiddleware = require('./middleware/tenantMiddleware');
+
+// Import API centrale
+const api = require('./api');
 
 // Load environment variables
 require('dotenv').config();
@@ -46,16 +49,23 @@ app.get('/api/health', (req, res) => {
   });
 });
 
-// Possiamo tenere il logger HTTP per il debug delle richieste in arrivo (opzionale)
-// app.use(createHttpLogger());
-
-// Applica il tenant middleware a tutte le rotte API eccetto health check
-app.use(new RegExp(`^${apiPrefix}(?!/health)`), tenantMiddleware);
-
-// Aggiungi il logger di risposta dopo il middleware tenant
+// Aggiungi il logger di risposta
 app.use(createResponseLogger());
 
-app.use(dbContextMiddleware);
+// Applica il middleware tenant e il middleware di contesto DB escludendo /api/health
+app.use((req, res, next) => {
+  if (req.path === '/api/health') {
+    return next();
+  }
+  
+  // Prima il tenant middleware
+  tenantMiddleware(req, res, (err) => {
+    if (err) return next(err);
+    
+    // Poi il middleware di contesto DB
+    dbContextMiddleware(req, res, next);
+  });
+});
 
 // Pass tenant info to sequelize options for all routes
 app.use((req, res, next) => {
@@ -65,13 +75,8 @@ app.use((req, res, next) => {
   next();
 });
 
-// API routes
-app.use('/api/auth', require('./api/routes/authRoutes'));
-// app.use('/api/users', require('./api/routes/userRoutes'));
-// app.use('/api/assets', require('./api/routes/assetRoutes'));
-// app.use('/api/locations', require('./api/routes/locationRoutes'));
-app.use('/api/auth-test', require('./api/routes/authTest'));
-app.use('/api/test-permissions', require('./api/routes/permissionTestRoutes'));
+// Utilizza le rotte API centrali
+app.use(apiPrefix, api.routes);
 
 // 404 handler
 app.use((req, res) => {
