@@ -1,11 +1,11 @@
+// Load environment variables
+require('dotenv').config();
+
 const { createClient } = require('redis');
 const { createLogger } = require('../utils/logger');
 
 // Initialize logger
 const logger = createLogger('redis');
-
-// Load environment variables
-require('dotenv').config();
 
 // Redis configuration
 const config = {

@@ -1,4 +1,6 @@
 'use strict';
+// Load environment variables
+require('dotenv').config();
 
 const passport = require('passport');
 const { Strategy: JwtStrategy, ExtractJwt } = require('passport-jwt');
@@ -19,6 +21,7 @@ module.exports = (app) => {
     ignoreExpiration: false
   };
 
+  logger.info(`JWT_SECRET usato da passport: ${process.env.JWT_SECRET}`);
   // Definizione della strategia JWT
   const jwtStrategy = new JwtStrategy(jwtOptions, async (payload, done) => {
     try {

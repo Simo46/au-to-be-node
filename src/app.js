@@ -1,3 +1,6 @@
+// Load environment variables
+require('dotenv').config();
+
 // Import required packages
 const express = require('express');
 const cors = require('cors');
@@ -17,9 +20,6 @@ const tenantMiddleware = require('./middleware/tenantMiddleware');
 
 // Import API centrale
 const api = require('./api');
-
-// Load environment variables
-require('dotenv').config();
 
 // Initialize Express app
 const app = express();
