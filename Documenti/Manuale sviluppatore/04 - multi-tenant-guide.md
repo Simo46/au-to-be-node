@@ -151,13 +151,304 @@ module.exports = function setupTenantHooks(sequelize) {
   sequelize.addHook('beforeCreate', async (instance, options) => {
     // Se è definito un tenant_id nelle options, lo usiamo per il record
     if (options.tenantId && !instance.tenant_id && instance.constructor.rawAttributes.tenant_id) {
-      instance.tenant_id = options.tenantId;
+      instance.tenantId = options.tenantId;
     }
     
     // ... altri hooks ...
   });
   
   // ... altri hooks ...
+};
+```
+
+## Interazione con il Sistema di Autenticazione
+
+Il multi-tenancy e il sistema di autenticazione sono strettamente integrati per garantire il corretto isolamento dei dati:
+
+### 1. Associazione Utenti a Tenant
+
+Ogni utente è associato a un tenant specifico tramite il campo `tenant_id` nel modello `User`:
+
+```javascript
+// In user.js
+User.init({
+  // ...
+  tenant_id: {
+    type: DataTypes.UUID,
+    references: {
+      model: 'tenants',
+      key: 'id'
+    }
+  },
+  // ...
+});
+
+User.belongsTo(models.Tenant, { 
+  foreignKey: 'tenant_id', 
+  as: 'tenant' 
+});
+```
+
+### 2. Flusso di Autenticazione Multi-tenant
+
+Il processo di autenticazione completo tiene conto del tenant:
+
+1. **Identificazione del tenant**: Il middleware `tenantMiddleware` identifica il tenant dalla richiesta
+2. **Login utente**: Il controller di autenticazione filtra gli utenti per tenant_id
+3. **Generazione token**: Il tenant_id viene incluso nel JWT payload
+4. **Verifica token**: Il middleware `authenticate` verifica che il tenant nel token corrisponda
+
+```javascript
+// Esempio dal controller di login
+const user = await User.findOne({
+  where: {
+    [Op.or]: [
+      { username },
+      { email: username } // Permette login con email o username
+    ],
+    tenant_id: req.tenantId, // Filtra per tenant
+    active: true
+  },
+  include: [{
+    model: Role,
+    as: 'roles',
+    through: { attributes: [] }
+  }]
+});
+
+// Nel jwtService quando genera il token
+const accessPayload = {
+  sub: user.id,
+  name: user.name,
+  email: user.email,
+  username: user.username,
+  tenant_id: user.tenant_id, // Includiamo il tenant_id nel payload
+  iat: now
+};
+
+// Nel middleware di autenticazione
+if (payload.tenant_id && user.tenant_id && payload.tenant_id !== user.tenant_id) {
+  logger.warn(`Autenticazione fallita: token emesso per un altro tenant`);
+  return done(null, false, { message: 'Token non valido per questo tenant' });
+}
+```
+
+### 3. Segregazione dei Ruoli e Permessi
+
+Alcuni ruoli possono esistere in tutti i tenant, ma i loro permessi sono applicati solo nel contesto del tenant specifico:
+
+```javascript
+// Esempio da abilityService.js
+// Le condizioni nei permessi spesso includono tenant_id
+const ability = await abilityService.defineAbilityFor(user);
+ability.can('read', { __type: 'Resource', tenant_id: user.tenant_id });
+```
+
+## Autenticazione e Multi-Tenant
+
+### 1. Controllo Tenant nel Login
+
+Quando un utente effettua il login, il sistema verifica che appartenga al tenant corretto:
+
+```javascript
+// In authController.js
+async login(req, res, next) {
+  try {
+    const { username, password } = req.body;
+
+    // Cerca l'utente con tenant_id corretto
+    const user = await User.findOne({
+      where: {
+        [Op.or]: [
+          { username },
+          { email: username }
+        ],
+        tenant_id: req.tenantId, // Importante: filtro per tenant
+        active: true
+      },
+      include: [/* ... */]
+    });
+
+    // Verifica se l'utente esiste
+    if (!user) {
+      logger.warn(`Tentativo di login fallito: utente ${username} non trovato nel tenant ${req.tenantId}`);
+      return next(AppError.authentication('Credenziali non valide'));
+    }
+
+    // Prosegue con verifica password...
+  } catch (error) {
+    // ...
+  }
+}
+```
+
+### 2. Tenant nel Token JWT
+
+Il tenant_id è incluso nel payload JWT:
+
+```javascript
+// In jwtService.js
+generateTokens(user, additionalClaims = {}) {
+  try {
+    const now = Math.floor(Date.now() / 1000);
+
+    // Payload per access token
+    const accessPayload = {
+      sub: user.id,
+      name: user.name,
+      email: user.email,
+      username: user.username,
+      tenant_id: user.tenant_id, // Il tenant è incluso nel token
+      iat: now,
+      ...additionalClaims
+    };
+
+    // Generazione token...
+  } catch (error) {
+    // ...
+  }
+}
+```
+
+### 3. Verifica Tenant nel Middleware di Autenticazione
+
+Il middleware di autenticazione verifica la coerenza tra il tenant nel token e quello dell'utente:
+
+```javascript
+// In config/passport.js
+const jwtStrategy = new JwtStrategy(jwtOptions, async (payload, done) => {
+  try {
+    // Cerca l'utente nel database
+    const user = await User.findByPk(payload.sub, {
+      include: [/* ... */]
+    });
+
+    // Se l'utente non esiste o non è attivo, rifiuta l'autenticazione
+    if (!user || !user.active) {
+      return done(null, false, { message: 'Utente non trovato o non attivo' });
+    }
+
+    // Verifica che il tenant dell'utente sia lo stesso di quello specificato nel token
+    if (payload.tenant_id && user.tenant_id && payload.tenant_id !== user.tenant_id) {
+      logger.warn(`Autenticazione fallita: token emesso per un altro tenant`);
+      return done(null, false, { message: 'Token non valido per questo tenant' });
+    }
+
+    // Autenticazione riuscita
+    return done(null, user);
+  } catch (error) {
+    // ...
+  }
+});
+```
+
+## Sistema di Permessi in Contesto Multi-Tenant
+
+### 1. Condizioni di Tenant nelle Abilities
+
+Le abilities dei ruoli includono spesso condizioni sul tenant_id:
+
+```javascript
+// In policyBuilder.js
+const roleAbilities = {
+  'Amministratore di Sistema': [
+    { action: 'manage', subject: 'all' }
+  ],
+  'Responsabile Filiale': [
+    // Permessi limitati alla propria filiale, nel proprio tenant
+    { 
+      action: 'read', 
+      subject: 'Filiale', 
+      conditions: { 
+        id: { $eq: '$user.filiale_id' },
+        tenant_id: { $eq: '$user.tenant_id' } // Condizione sul tenant
+      } 
+    },
+    // Altri permessi...
+  ],
+  // Altri ruoli...
+};
+```
+
+### 2. Policy che Rispettano il Multi-tenant
+
+Le policy implementano controlli sul tenant_id per garantire la segregazione dei dati:
+
+```javascript
+// Esempio da UserPolicy.js
+async canRead(user, targetUser) {
+  try {
+    const baseCanRead = await super.canRead(user, targetUser);
+    if (!baseCanRead) return false;
+    
+    // Un utente può sempre leggere il proprio profilo
+    if (user.id === targetUser.id) return true;
+    
+    // Verifica che il tenant_id sia lo stesso (a meno che l'utente sia un amministratore globale)
+    if (!user.hasRole('Amministratore di Sistema') && 
+        targetUser.tenant_id && user.tenant_id && 
+        targetUser.tenant_id !== user.tenant_id) {
+      logger.warn(`Tentativo di accesso a utente di tenant diverso: ${user.username}`);
+      return false;
+    }
+    
+    // Altre verifiche...
+    
+    return true;
+  } catch (error) {
+    // ...
+  }
+}
+```
+
+### 3. Middleware di Permessi con Filtro Tenant
+
+Il middleware `filterByPermission` applica automaticamente il filtro per tenant:
+
+```javascript
+// In permissionMiddleware.js
+const filterByPermission = (action, subjectType) => {
+  return async (req, res, next) => {
+    try {
+      // Verifica che l'utente sia autenticato
+      if (!req.user) {
+        return next(AppError.authentication('Utente non autenticato'));
+      }
+
+      // Ottieni l'ability dell'utente
+      const ability = await abilityService.defineAbilityFor(req.user);
+      req.ability = ability;
+      
+      // Trova tutte le regole applicabili a questo tipo di soggetto e azione
+      const relevantRules = ability.rulesFor(action, subjectType);
+      
+      // Estrai le condizioni dalle regole
+      const conditions = relevantRules
+        .filter(rule => !rule.inverted && rule.conditions)
+        .map(rule => rule.conditions);
+      
+      // Se ci sono condizioni, aggiungile al filtro della query
+      if (conditions.length > 0) {
+        req.queryOptions = req.queryOptions || {};
+        
+        // Gestione condizioni...
+      }
+      
+      // Importante: Aggiungi sempre filtro tenant_id
+      if (!req.queryOptions) req.queryOptions = {};
+      if (!req.queryOptions.where) req.queryOptions.where = {};
+      
+      // Imposta tenant_id nella query se il modello ha questo campo
+      const model = sequelize.models[subjectType];
+      if (model && model.rawAttributes.tenant_id) {
+        req.queryOptions.where.tenant_id = req.user.tenant_id;
+      }
+      
+      next();
+    } catch (error) {
+      // ...
+    }
+  };
 };
 ```
 
@@ -212,8 +503,6 @@ const createItem = async (req, res) => {
   }
 };
 ```
-
-Questo approccio rende il codice più resiliente e meno soggetto a errori, poiché il middleware ha già estratto e validato il tenant.
 
 ### Query e Ricerche
 
@@ -357,6 +646,12 @@ Il sistema è progettato per minimizzare gli errori di isolamento tra tenant:
 
 3. **Oggetti richiesta arricchiti**: `req.tenantId`, `req.tenant`, e `req.sequelizeOptions` sono sempre disponibili
 
+4. **Integrazione con autenticazione**: Il tenant_id è verificato in più punti:
+   - Identificazione tenant iniziale
+   - Login utente filtrato per tenant
+   - Validazione token JWT con verifica tenant
+   - Middleware permessi con filtro tenant
+
 Tuttavia, è importante mantenere alcune best practices:
 
 ### Controlli Espliciti di Sicurezza
@@ -364,7 +659,7 @@ Tuttavia, è importante mantenere alcune best practices:
 Per operazioni critiche o altamente sensibili, aggiungi controlli espliciti:
 
 ```javascript
-const deleteItem = async (req, res) => {
+const deleteItem = async (req, res, next) => {
   try {
     const item = await Item.findOne({
       where: { 
@@ -456,9 +751,19 @@ Se vedi dati che appartengono ad altri tenant:
 1. **Verifica tutte le query**: Assicurati che ogni query includa `tenant_id: req.tenantId`
 2. **Controlla i join**: Nelle query con join, verifica che tutte le tabelle siano filtrate
 3. **Esamina i middleware**: Assicurati che tutte le route passino attraverso `tenantMiddleware.js`
+4. **Verifica il token**: Controlla che il payload JWT contenga il tenant_id corretto
+5. **Controlla le policy**: Verifica che le policy includano controlli sul tenant_id
+
+### Problemi di Autenticazione Multi-tenant
+
+Se gli utenti non riescono ad autenticarsi:
+
+1. **Verifica il tenant nelle query di login**: Assicurati che la query filtri per tenant_id
+2. **Controlla il payload JWT**: Verifica che tenant_id sia incluso nel token
+3. **Esamina la configurazione Passport**: Assicurati che verifichi la corrispondenza dei tenant
 
 ## Conclusione
 
-Il sistema multi-tenant in au-to-be-node è progettato per essere resiliente e prevenire errori comuni. Sfrutta gli strumenti forniti (come `req.tenantId` e `req.sequelizeOptions`) per mantenere un isolamento rigoroso tra i tenant.
+Il sistema multi-tenant in au-to-be-node è progettato per essere resiliente e prevenire errori comuni, integrandosi strettamente con il sistema di autenticazione e permessi. Sfrutta gli strumenti forniti (come `req.tenantId` e `req.sequelizeOptions`) per mantenere un isolamento rigoroso tra i tenant, e assicurati di implementare correttamente i controlli di tenant nelle policy di autorizzazione.
 
 Seguendo questa guida, potrai sviluppare funzionalità che rispettano la natura multi-tenant dell'applicazione, garantendo sicurezza e integrità dei dati per tutti i clienti.

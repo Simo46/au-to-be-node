@@ -61,6 +61,62 @@ Il sistema utilizza una variabile di sessione PostgreSQL (`app.current_user_id`)
 - Middleware Express (`src/middleware/db-context.js`)
 - Utility per script batch e cronjob (`src/utils/db-context.js`)
 
+## Integrazione con il Sistema di Autenticazione
+
+Il sistema di audit è strettamente integrato con il sistema di autenticazione per garantire la tracciabilità completa:
+
+### 1. Propagazione dell'utente autenticato
+
+Quando un utente è autenticato tramite JWT, il suo ID viene:
+1. Estratto dal token JWT da Passport
+2. Reso disponibile come `req.user` nei controller e middleware
+3. Propagato al database attraverso `db-context.js` che imposta la variabile di sessione PostgreSQL
+
+```javascript
+// In middleware/db-context.js
+if (req.user && req.user.id) {
+  await sequelize.query("SELECT set_config('app.current_user_id', :userId, true)", {
+    replacements: { userId: req.user.id }
+  });
+}
+```
+
+### 2. Registrazione nei controller
+
+Nei controller, l'ID dell'utente viene passato alle operazioni Sequelize:
+
+```javascript
+// Esempio di creazione record con tracking utente
+await Model.create(data, {
+  userId: req.user.id  // Questo ID viene utilizzato negli hooks
+});
+
+// Esempio di aggiornamento
+await instance.update(data, {
+  userId: req.user.id
+});
+```
+
+### 3. Operazioni in transazione
+
+Per le operazioni in transazione, l'ID utente viene associato al contesto della transazione:
+
+```javascript
+const transaction = await sequelize.transaction();
+
+try {
+  // Imposta il contesto utente per questa transazione
+  await dbContext.setUserId(req.user.id, { transaction });
+  
+  // Operazioni all'interno della transazione
+  
+  await transaction.commit();
+} catch (error) {
+  await transaction.rollback();
+  throw error;
+}
+```
+
 ## Come utilizzare il sistema durante lo sviluppo
 
 ### In controller e route
@@ -153,6 +209,49 @@ const scheduledTask = async () => {
 };
 ```
 
+## Accesso ai dati di audit
+
+### Visualizzazione history tramite API
+
+Puoi implementare endpoint API per accedere alla history di un'entità:
+
+```javascript
+// Esempio di controller per recuperare la history
+const getAssetHistory = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    
+    const history = await AssetHistory.findAll({
+      where: { asset_id: id },
+      include: [{ model: User, as: 'user', attributes: ['id', 'username', 'name'] }],
+      order: [['created_at', 'DESC']]
+    });
+    
+    // Controlla permessi di visualizzazione storia
+    if (!await policy.canViewHistory(req.user, id)) {
+      return next(AppError.authorization('Non autorizzato a visualizzare la storia di questo asset'));
+    }
+    
+    res.json({
+      status: 'success',
+      data: { history }
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+```
+
+Nelle rotte, proteggi l'accesso con il middleware di autenticazione:
+
+```javascript
+router.get('/assets/:id/history',
+  authenticate, 
+  checkPermission('read', 'AssetHistory'),
+  assetController.getAssetHistory
+);
+```
+
 ## Best practices per sviluppatori
 
 1. **Usa sempre le transazioni** per operazioni che modificano dati correlati
@@ -171,17 +270,38 @@ const assetHistory = await sequelize.models.AssetHistory.findAll({
 });
 ```
 
-## Come funzionano i trigger PostgreSQL
+## Controllo accessi per audit data
 
-I trigger PostgreSQL sono attivati automaticamente quando vengono eseguite operazioni direttamente sul database. Il processo funziona così:
+Il sistema di permessi controlla anche l'accesso ai dati di audit:
 
-1. Un'operazione INSERT, UPDATE o DELETE viene eseguita su una tabella tracciata
-2. Il trigger `track_entity_changes()` si attiva
-3. Il trigger controlla se c'è un ID utente nel contesto (`app.current_user_id`)
-4. Registra la modifica nella tabella history appropriata
-5. Imposta automaticamente i campi `created_by` e `updated_by` se non sono specificati
+1. Gli utenti `Amministratore di Sistema` hanno accesso completo a tutti i dati di history
+2. Gli utenti come `Ufficio Tecnico` e `Ufficio Post Vendita` possono vedere i dati di history di tutti gli asset
+3. `Area Manager` possono vedere solo la history degli asset nella loro area
+4. `Responsabile Filiale` e `Responsabile Officina` vedono solo la history degli asset della loro filiale
 
-Questo garantisce che anche le modifiche fatte da tool di amministrazione database o query dirette vengano tracciate.
+Questo controllo è implementato nelle policy:
+
+```javascript
+// Esempio di policy per history (schematico)
+class AssetHistoryPolicy extends BasePolicy {
+  async canRead(user, history) {
+    if (user.hasRole('Amministratore di Sistema')) return true;
+    if (user.hasRole('Ufficio Tecnico')) return true;
+    
+    // Ottieni l'asset associato alla history
+    const asset = await Asset.findByPk(history.asset_id);
+    
+    // Verifica permessi in base alla filiale
+    if (user.filiale_id && asset.filiale_id !== user.filiale_id) {
+      return user.hasRole('Area Manager') && 
+             // Verifica se la filiale è nell'area dell'Area Manager
+             user.settings?.managed_filiali?.includes(asset.filiale_id);
+    }
+    
+    return true;
+  }
+}
+```
 
 ## Utente di sistema
 
@@ -226,7 +346,8 @@ Se noti che le modifiche non vengono tracciate correttamente:
    SELECT * FROM pg_trigger WHERE tgname LIKE '%_changes_trigger';
    ```
 4. Controlla i log per errori nei trigger o negli hooks
+5. Verifica che l'utente sia autenticato correttamente e che `req.user.id` sia disponibile
 
 ## Conclusione
 
-Il sistema di audit e tracking è progettato per essere resiliente e completo, funzionando a più livelli per garantire che tutte le modifiche ai dati siano tracciate. Quando sviluppi nuove funzionalità, assicurati di integrare correttamente queste pratiche per mantenere l'integrità dell'audit trail.
+Il sistema di audit e tracking è progettato per essere resiliente e completo, funzionando a più livelli per garantire che tutte le modifiche ai dati siano tracciate. Il suo stretto legame con il sistema di autenticazione assicura che ogni modifica sia attribuita all'utente che l'ha effettuata, garantendo tracciabilità e responsabilità completa.

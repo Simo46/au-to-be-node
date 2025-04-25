@@ -4,12 +4,16 @@
 
 au-to-be-node è il backend per un sistema di Asset Management progettato per concessionarie e officine. Il sistema permette di gestire asset come attrezzature, strumenti di misura e impianti tecnologici, monitorarne la manutenzione e gestirne i prestiti tra filiali.
 
+Il sistema implementa un'architettura multi-tenant robusta e un sistema completo di autenticazione e autorizzazione basato su JWT e CASL, che garantisce sicurezza e controllo degli accessi granulare tramite ruoli e permessi personalizzabili.
+
 ### Stack tecnologico
 
 - **Backend**: Node.js 22 + Express 5
 - **Database**: PostgreSQL 17
 - **Cache**: Redis
 - **ORM**: Sequelize 6
+- **Autenticazione**: JWT, Passport.js
+- **Permessi**: CASL (Control Authorization Security Layer)
 - **Logging**: Pino (logging strutturato in formato JSON)
 - **Containerizzazione**: Docker e Docker Compose
 - **Versionamento**: Git con Git Flow
@@ -91,11 +95,19 @@ au-to-be-node/
 │   ├── config/            # Configurazioni applicazione
 │   │   ├── database.js    # Configurazione Sequelize
 │   │   ├── redis.js       # Configurazione Redis
+│   │   ├── passport.js    # Configurazione autenticazione
 │   │   └── init.js        # Inizializzazione servizi
 │   ├── models/            # Modelli dati e ORM
 │   ├── services/          # Business logic
+│   │   ├── jwtService.js  # Gestione token JWT
+│   │   └── abilityService.js # Servizio permessi CASL
 │   ├── middleware/        # Middleware personalizzati
-│   │   └── errorHandler.js # Gestione centralizzata errori
+│   │   ├── errorHandler.js # Gestione centralizzata errori
+│   │   ├── authMiddleware.js # Middleware autenticazione
+│   │   └── permissionMiddleware.js # Middleware autorizzazioni
+│   ├── policies/          # Policy per controllo accessi
+│   │   ├── BasePolicy.js  # Policy base
+│   │   └── ...            # Policy specifiche per modello
 │   └── utils/             # Funzioni di utilità
 │       └── logger.js      # Configurazione Pino logger
 ├── docker-compose.yaml    # Configurazione Docker Compose
@@ -163,10 +175,10 @@ chown -R 1000:1000 /usr/src/app
 Per maggiori dettagli sul progetto:
 
 - **tech-stack-guide**: Informazioni sulle librerie e le tecnologie utilizzate
-- **Piano di sviluppo.md**: Timeline e roadmap del progetto
-- **Sistema di Permessi per Asset Management.md**: Dettagli sul sistema di permessi
-- **specifiche-asset-management.md**: Specifiche tecniche generali
-- **specifiche-dettagliate.md**: Specifiche tecniche dettagliate
+- **audit-system-guide**: Dettagli sul sistema di audit trail e tracciamento modifiche
+- **database-structure-guide**: Struttura del database e relazioni tra modelli
+- **multi-tenant-guide**: Implementazione e gestione dell'architettura multi-tenant
+- **auth-permissions-guide**: Sistema di autenticazione e permessi granulari
 
 ## Database
 
@@ -188,6 +200,9 @@ docker compose logs api
 
 ### Database non raggiungibile
 Controlla le variabili d'ambiente nel file `.env` e assicurati che corrispondano alle impostazioni in `docker-compose.yaml`.
+
+### Problemi di autenticazione
+Se riscontri errori di token non valido o permessi negati, consulta la guida di autenticazione e permessi per una risoluzione dettagliata.
 
 ### Riferimenti alle porte
 - Express.js: 3000

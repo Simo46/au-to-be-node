@@ -41,6 +41,189 @@ Asset (base)
 - **Tabelle specifiche**: Contengono campi specializzati per ogni tipo di asset
 - **Campo `asset_type`**: Discrimina il tipo di asset nella tabella base
 
+## Sistema di Autenticazione e Permessi
+
+### Modelli di Autenticazione
+
+Il sistema di autenticazione si basa sui seguenti modelli:
+
+- **User**: Gestisce gli utenti del sistema
+- **Role**: Definisce i ruoli disponibili
+- **Ability**: Definisce i permessi specifici associati ai ruoli
+- **UserRole**: Tabella pivot per relazione molti-a-molti tra utenti e ruoli
+
+#### Modello User
+
+```javascript
+User.init({
+  id: {
+    type: DataTypes.UUID,
+    defaultValue: DataTypes.UUIDV4,
+    primaryKey: true
+  },
+  tenant_id: {
+    type: DataTypes.UUID,
+    references: {
+      model: 'tenants',
+      key: 'id'
+    }
+  },
+  name: DataTypes.STRING,
+  email: DataTypes.STRING,
+  username: DataTypes.STRING,
+  email_verified_at: DataTypes.DATE,
+  password: DataTypes.STRING,
+  avatar: DataTypes.STRING,
+  phone: DataTypes.STRING,
+  job_title: DataTypes.STRING,
+  active: {
+    type: DataTypes.BOOLEAN,
+    defaultValue: true
+  },
+  settings: DataTypes.JSONB,
+  remember_token: DataTypes.STRING,
+  filiale_id: DataTypes.UUID
+}, {
+  // Opzioni modello
+  hooks: {
+    beforeCreate: async (user) => {
+      // Hash della password
+      if (user.password) {
+        user.password = await bcrypt.hash(user.password, 10);
+      }
+    },
+    beforeUpdate: async (user) => {
+      // Hash della password se modificata
+      if (user.changed('password')) {
+        user.password = await bcrypt.hash(user.password, 10);
+      }
+    }
+  }
+});
+```
+
+#### Modello Role
+
+```javascript
+Role.init({
+  id: {
+    type: DataTypes.UUID,
+    defaultValue: DataTypes.UUIDV4,
+    primaryKey: true
+  },
+  name: {
+    type: DataTypes.STRING,
+    allowNull: false,
+    unique: true
+  },
+  description: DataTypes.STRING
+}, {
+  // Opzioni modello
+});
+```
+
+#### Modello Ability
+
+```javascript
+Ability.init({
+  id: {
+    type: DataTypes.UUID,
+    defaultValue: DataTypes.UUIDV4,
+    primaryKey: true
+  },
+  role_id: {
+    type: DataTypes.UUID,
+    references: {
+      model: 'roles',
+      key: 'id'
+    }
+  },
+  action: {
+    type: DataTypes.STRING,
+    allowNull: false,
+    validate: {
+      isIn: [['create', 'read', 'update', 'delete', 'manage']]
+    }
+  },
+  subject: {
+    type: DataTypes.STRING,
+    allowNull: false
+  },
+  conditions: DataTypes.JSONB,  // Condizioni per limitare il permesso
+  fields: DataTypes.ARRAY(DataTypes.STRING),  // Campi specifici
+  inverted: {
+    type: DataTypes.BOOLEAN,
+    defaultValue: false  // Se true, nega il permesso
+  },
+  reason: DataTypes.STRING  // Motivazione per documentazione
+}, {
+  // Opzioni modello
+});
+```
+
+### Relazioni tra Modelli di Autenticazione
+
+Le relazioni tra i modelli sono definite nei metodi `associate` di ciascuna classe:
+
+```javascript
+// In User.js
+static associate(models) {
+  // Relazione con tenant
+  User.belongsTo(models.Tenant, { 
+    foreignKey: 'tenant_id', 
+    as: 'tenant' 
+  });
+  
+  // Relazione con filiale
+  User.belongsTo(models.Filiale, { 
+    foreignKey: 'filiale_id', 
+    as: 'filiale' 
+  });
+  
+  // Relazione molti-a-molti con Role
+  User.belongsToMany(models.Role, {
+    through: 'user_roles',
+    foreignKey: 'user_id',
+    otherKey: 'role_id',
+    as: 'roles'
+  });
+}
+
+// In Role.js
+static associate(models) {
+  // Relazione molti-a-molti con User
+  Role.belongsToMany(models.User, {
+    through: 'user_roles',
+    foreignKey: 'role_id',
+    otherKey: 'user_id',
+    as: 'users'
+  });
+  
+  // Relazione con abilities
+  Role.hasMany(models.Ability, {
+    foreignKey: 'role_id',
+    as: 'abilities'
+  });
+}
+
+// In Ability.js
+static associate(models) {
+  // Relazione con ruoli
+  Ability.belongsTo(models.Role, {
+    foreignKey: 'role_id',
+    as: 'role'
+  });
+}
+```
+
+### Integrazione Multi-Tenant
+
+Il modello `User` include un riferimento al tenant tramite `tenant_id`, rispettando l'architettura multi-tenant del sistema:
+
+- Ogni utente appartiene a un tenant specifico
+- Le operazioni utente vengono filtrate automaticamente per tenant
+- Le queries includono sempre il tenant_id dell'utente autenticato
+
 ## Schema Relazionale
 
 ### Tabelle Principali
@@ -48,7 +231,7 @@ Asset (base)
 | Tabella | Descrizione | Chiavi Esterne Principali |
 |---------|-------------|---------------------------|
 | `tenants` | Clienti del sistema | - |
-| `users` | Utenti del sistema | `tenant_id` |
+| `users` | Utenti del sistema | `tenant_id`, `filiale_id` |
 | `roles` | Ruoli utente | - |
 | `user_roles` | Associazione utenti-ruoli | `user_id`, `role_id` |
 | `abilities` | Permessi specifici | `role_id` |
@@ -152,6 +335,27 @@ async getSpecializedAsset() {
       return null;
   }
 }
+
+// In user.js - Metodi per verifica ruoli
+hasRole(roleName) {
+  if (!this.roles) return false;
+  return this.roles.some(role => role.name === roleName);
+}
+
+hasAnyRole(roleNames) {
+  if (!this.roles) return false;
+  return this.roles.some(role => roleNames.includes(role.name));
+}
+
+hasAllRoles(roleNames) {
+  if (!this.roles) return false;
+  return roleNames.every(name => this.roles.some(role => role.name === name));
+}
+
+// In user.js - Verifica password
+async validPassword(password) {
+  return await bcrypt.compare(password, this.password);
+}
 ```
 
 ### Relazioni Chiave
@@ -167,6 +371,14 @@ Edificio.hasMany(models.Piano, { foreignKey: 'edificio_id', as: 'piani' });
 Asset.hasOne(models.Attrezzatura, { foreignKey: 'asset_id', as: 'attrezzatura' });
 Attrezzatura.belongsTo(models.Asset, { foreignKey: 'asset_id', as: 'asset' });
 // ...e così via per le altre specializzazioni
+
+// User → Role (Many-to-Many)
+User.belongsToMany(models.Role, { through: 'user_roles', foreignKey: 'user_id', as: 'roles' });
+Role.belongsToMany(models.User, { through: 'user_roles', foreignKey: 'role_id', as: 'users' });
+
+// Role → Ability (One-to-Many)
+Role.hasMany(models.Ability, { foreignKey: 'role_id', as: 'abilities' });
+Ability.belongsTo(models.Role, { foreignKey: 'role_id', as: 'role' });
 ```
 
 ## Scopes e Query Comuni
@@ -212,6 +424,30 @@ const assets = await Asset.findAll({
 });
 ```
 
+### Query con Filtri di Permesso
+
+Per implementare i filtri basati sui permessi dell'utente:
+
+```javascript
+// Esempio: ottenere assets filtrati per permessi
+const { filterByPermission } = require('../middleware/permissionMiddleware');
+
+// Nel controller
+const getAssets = async (req, res, next) => {
+  // req.queryOptions ora contiene i filtri basati sui permessi dell'utente
+  // impostati dal middleware filterByPermission
+  const assets = await Asset.findAll(req.queryOptions);
+  res.json({ assets });
+};
+
+// Nelle routes
+router.get('/assets',
+  authenticate,
+  filterByPermission('read', 'Asset'),
+  assetController.getAssets
+);
+```
+
 ## Vincoli e Validazioni
 
 ### Validazioni Sequelize
@@ -233,6 +469,35 @@ email: {
     isEmail: true
   }
 }
+
+// Esempio di validazioni in user.js
+email: {
+  type: DataTypes.STRING,
+  allowNull: false,
+  unique: true,
+  validate: {
+    isEmail: {
+      msg: 'L\'indirizzo email non è valido'
+    },
+    notEmpty: {
+      msg: 'L\'email è obbligatoria'
+    }
+  }
+},
+username: {
+  type: DataTypes.STRING,
+  allowNull: false,
+  unique: true,
+  validate: {
+    notEmpty: {
+      msg: 'Il nome utente è obbligatorio'
+    },
+    len: {
+      args: [3, 50],
+      msg: 'Il nome utente deve essere compreso tra 3 e 50 caratteri'
+    }
+  }
+}
 ```
 
 ### Vincoli di Unicità
@@ -244,6 +509,10 @@ I vincoli di unicità sono implementati con indici compositi per supportare il m
 await queryInterface.addIndex('filiali', ['code', 'tenant_id'], {
   unique: true
 });
+
+// Indice unico per username/email
+await queryInterface.addIndex('users', ['email']);
+await queryInterface.addIndex('users', ['username']);
 ```
 
 ## UUID come Chiavi Primarie
@@ -294,6 +563,43 @@ Quando devi estendere il modello dati, segui queste linee guida:
    - Specifica `as` e `foreignKey` esplicitamente
    - Implementa cascate appropriate (onDelete, onUpdate)
 
+## Estendere il Sistema di Permessi
+
+Quando aggiungi nuovi modelli, ricorda di:
+
+1. **Aggiornare i ruoli predefiniti** in `services/policyBuilder.js`:
+   ```javascript
+   // Esempio: aggiungere un permesso per un nuovo modello
+   const roleAbilities = {
+     'Amministratore di Sistema': [
+       // ...
+       { action: 'manage', subject: 'NuovoModello' }
+     ],
+     'Ufficio Tecnico': [
+       // ...
+       { action: 'read', subject: 'NuovoModello' },
+       { action: 'create', subject: 'NuovoModello' }
+     ]
+     // Aggiungere permessi agli altri ruoli...
+   };
+   ```
+
+2. **Creare una Policy dedicata** per il nuovo modello:
+   ```javascript
+   // In policies/NuovoModelloPolicy.js
+   const BasePolicy = require('./BasePolicy');
+   
+   class NuovoModelloPolicy extends BasePolicy {
+     constructor() {
+       super('NuovoModello');
+     }
+     
+     // Implementare metodi per autorizzazioni specifiche...
+   }
+   
+   module.exports = new NuovoModelloPolicy();
+   ```
+
 ## Prestazioni e Ottimizzazione
 
 ### Indici
@@ -328,8 +634,24 @@ const assetsWithAll = await Asset.findAll({
     }
   ]
 });
+
+// Per utenti con ruoli e abilities
+const usersWithRoles = await User.findAll({
+  include: [
+    {
+      model: sequelize.models.Role,
+      as: 'roles',
+      include: [
+        {
+          model: sequelize.models.Ability,
+          as: 'abilities'
+        }
+      ]
+    }
+  ]
+});
 ```
 
 ## Conclusione
 
-Questa guida fornisce un'introduzione alla struttura del database e ai modelli dati in au-to-be-node. Seguendo queste convenzioni e pattern, potrai sviluppare nuove funzionalità che si integrano perfettamente con il sistema esistente, mantenendo la coerenza e l'integrità del modello dati.
+Questa guida fornisce un'introduzione alla struttura del database e ai modelli dati in au-to-be-node, incluso il sistema di autenticazione e permessi. Seguendo queste convenzioni e pattern, potrai sviluppare nuove funzionalità che si integrano perfettamente con il sistema esistente, mantenendo la coerenza e l'integrità del modello dati.
