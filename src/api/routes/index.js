@@ -9,6 +9,7 @@ const router = express.Router();
 // Importa le rotte
 const authRoutes = require('./authRoutes');
 const userRoutes = require('./userRoutes');
+const roleRoutes = require('./roleRoutes');
 
 // Middleware per il controllo della salute dell'API
 router.get('/health', (req, res) => {
@@ -33,7 +34,8 @@ if (process.env.NODE_ENV === 'development') {
 
 // Configura le rotte - tenantMiddleware viene già applicato in app.js
 router.use('/auth', authRoutes);
-router.use('/users', userRoutes); 
+router.use('/users', userRoutes);
+router.use('/roles', roleRoutes);
 
 // Gestione 404 per rotte non trovate
 router.use((req, res) => {
