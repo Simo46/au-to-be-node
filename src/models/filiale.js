@@ -30,6 +30,16 @@ module.exports = (sequelize, DataTypes) => {
         foreignKey: 'filiale_id', 
         as: 'history' 
       });
+      
+      // Relazione con gli utenti della filiale
+      Filiale.hasMany(models.User, {
+        foreignKey: 'filiale_id',
+        as: 'utenti'
+      });
+      
+      // Relazione con gli utenti della filiale
+      // Non definiamo una relazione specifica per il responsabile qui
+      // Lo gestiremo a livello di controller con query specifica
     }
     
     // Definizione metodo per creare entry nella history
