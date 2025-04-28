@@ -152,7 +152,12 @@ class PolicyBuilder {
           { action: 'update', subject: 'Asset', conditions: { filiale_id: { $eq: '$user.filiale_id' } }, fields: ['scatola', 'scaffale'] },
           { action: 'read', subject: 'Attrezzatura', conditions: { filiale_id: { $eq: '$user.filiale_id' } } },
           { action: 'read', subject: 'StrumentoDiMisura', conditions: { filiale_id: { $eq: '$user.filiale_id' } } },
-          { action: 'read', subject: 'ImpiantoTecnologico', conditions: { filiale_id: { $eq: '$user.filiale_id' } } }
+          { action: 'read', subject: 'ImpiantoTecnologico', conditions: { filiale_id: { $eq: '$user.filiale_id' } } },
+          // Accesso limitato alle location della propria filiale
+          { action: 'read', subject: 'Filiale', conditions: { id: { $eq: '$user.filiale_id' } } },
+          { action: 'read', subject: 'Edificio', conditions: { filiale_id: { $eq: '$user.filiale_id' } } },
+          { action: 'read', subject: 'Piano', conditions: { filiale_id: { $eq: '$user.filiale_id' } } },
+          { action: 'read', subject: 'locale', conditions: { filiale_id: { $eq: '$user.filiale_id' } } }
         ]
       }
     ];

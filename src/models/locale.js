@@ -119,6 +119,7 @@ module.exports = (sequelize, DataTypes) => {
         notEmpty: true
       }
     },
+    // Campi aggiuntivi per locale
     planimetria: DataTypes.STRING,
     notes: DataTypes.TEXT,
     active: {
