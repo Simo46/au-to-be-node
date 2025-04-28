@@ -11,7 +11,7 @@ const authRoutes = require('./authRoutes');
 const userRoutes = require('./userRoutes');
 const roleRoutes = require('./roleRoutes');
 const filialeRoutes = require('./filialeRoutes');
-const edificioRoutes = require('./edificioRoutes'); // Nuova importazione
+const pianoRoutes = require('./pianoRoutes'); // Nuova importazione
 
 // Middleware per il controllo della salute dell'API
 router.get('/health', (req, res) => {
@@ -39,7 +39,7 @@ router.use('/auth', authRoutes);
 router.use('/users', userRoutes);
 router.use('/roles', roleRoutes);
 router.use('/filiali', filialeRoutes);
-router.use('/edifici', edificioRoutes); // Nuova route
+router.use('/piani', pianoRoutes); // Nuova route
 
 // Gestione 404 per rotte non trovate
 router.use((req, res) => {
