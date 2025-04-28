@@ -10,7 +10,9 @@ const router = express.Router();
 const authRoutes = require('./authRoutes');
 const userRoutes = require('./userRoutes');
 const roleRoutes = require('./roleRoutes');
-const filialeRoutes = require('./filialeRoutes'); // Nuova importazione
+const filialeRoutes = require('./filialeRoutes');
+const pianoRoutes = require('./pianoRoutes'); 
+const localeRoutes = require('./localeRoutes');
 
 // Middleware per il controllo della salute dell'API
 router.get('/health', (req, res) => {
@@ -37,7 +39,9 @@ if (process.env.NODE_ENV === 'development') {
 router.use('/auth', authRoutes);
 router.use('/users', userRoutes);
 router.use('/roles', roleRoutes);
-router.use('/filiali', filialeRoutes); // Nuova route
+router.use('/filiali', filialeRoutes);
+router.use('/piani', pianoRoutes); 
+router.use('/locali', localeRoutes); 
 
 // Gestione 404 per rotte non trovate
 router.use((req, res) => {
