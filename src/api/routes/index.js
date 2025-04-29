@@ -13,6 +13,10 @@ const roleRoutes = require('./roleRoutes');
 const filialeRoutes = require('./filialeRoutes');
 const pianoRoutes = require('./pianoRoutes'); 
 const localeRoutes = require('./localeRoutes');
+const assetRoutes = require('./assetRoutes');
+const attrezzaturaRoutes = require('./attrezzaturaRoutes');
+const strumentoRoutes = require('./strumentoRoutes');
+const impiantoRoutes = require('./impiantoRoutes');
 
 // Middleware per il controllo della salute dell'API
 router.get('/health', (req, res) => {
@@ -42,6 +46,10 @@ router.use('/roles', roleRoutes);
 router.use('/filiali', filialeRoutes);
 router.use('/piani', pianoRoutes); 
 router.use('/locali', localeRoutes); 
+router.use('/assets', assetRoutes);
+router.use('/attrezzature', attrezzaturaRoutes);
+router.use('/strumenti', strumentoRoutes);
+router.use('/impianti', impiantoRoutes);
 
 // Gestione 404 per rotte non trovate
 router.use((req, res) => {

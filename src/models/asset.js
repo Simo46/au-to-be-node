@@ -85,9 +85,9 @@ module.exports = (sequelize, DataTypes) => {
           case 'attrezzatura':
             return await this.getAttrezzatura();
           case 'strumento_misura':
-            return await this.getStrumentoDiMisura();
+            return await this.getStrumento_di_misura();
           case 'impianto':
-            return await this.getImpiantoTecnologico();
+            return await this.getImpianto_tecnologico();
           default:
             return null;
         }

@@ -12,6 +12,10 @@ const roleController = require('./controllers/roleController');
 const filialeController = require('./controllers/filialeController');
 const pianoController = require('./controllers/pianoController'); 
 const localeController = require('./controllers/localeController');
+const assetController = require('./controllers/assetController');
+const attrezzaturaController = require('./controllers/attrezzaturaController');
+const strumentoController = require('./controllers/strumentoController');
+const impiantoController = require('./controllers/impiantoController');
 
 // Routes
 const routes = require('./routes');
@@ -23,6 +27,10 @@ const roleValidators = require('./validators/roleValidators');
 const filialeValidators = require('./validators/filialeValidators');
 const pianoValidators = require('./validators/pianoValidators'); 
 const localeValidators = require('./validators/localeValidators'); 
+const assetValidators = require('./validators/assetValidators');
+const attrezzaturaValidators = require('./validators/attrezzaturaValidators');
+const strumentoValidators = require('./validators/strumentoValidators');
+const impiantoValidators = require('./validators/impiantoValidators');
 
 module.exports = {
   controllers: {
@@ -31,7 +39,11 @@ module.exports = {
     roleController,
     filialeController,
     pianoController,
-    localeController
+    localeController,
+    assetController,
+    attrezzaturaController,
+    strumentoController,
+    impiantoController
   },
   routes,
   validators: {
@@ -40,6 +52,10 @@ module.exports = {
     roleValidators,
     filialeValidators,
     pianoValidators,
-    localeValidators
+    localeValidators,
+    assetValidators,
+    attrezzaturaValidators,
+    strumentoValidators,
+    impiantoValidators
   }
 };
