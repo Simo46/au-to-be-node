@@ -13,7 +13,8 @@ class PolicyBuilder {
         name: 'Amministratore di Sistema',
         description: 'Accesso completo a tutte le funzionalità del sistema',
         abilities: [
-          { action: 'manage', subject: 'all' } // Permesso completo su tutto
+          { action: 'manage', subject: 'all' }, // Permesso completo su tutto
+          { action: 'manage', subject: 'UserAbility' } // Permesso di gestire permessi individuali
         ]
       },
       {
@@ -35,7 +36,9 @@ class PolicyBuilder {
           { action: 'create', subject: 'User' },
           { action: 'update', subject: 'User' },
           // Lettura ruoli
-          { action: 'read', subject: 'Role' }
+          { action: 'read', subject: 'Role' },
+          // Permesso di leggere permessi individuali
+          { action: 'read', subject: 'UserAbility' } 
         ]
       },
       {

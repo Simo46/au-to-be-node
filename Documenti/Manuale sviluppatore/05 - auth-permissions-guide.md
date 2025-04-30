@@ -10,6 +10,7 @@ Il sistema di autenticazione e gestione permessi è basato su:
 - **Passport.js** per la verifica dei token
 - **CASL** per l'implementazione del sistema di permessi granulari
 - **Role-Based Access Control (RBAC)** esteso con permessi condizionali
+- **Permessi Individuali** per gestire eccezioni e casi speciali
 
 L'architettura tiene conto del sistema multi-tenant, garantendo un corretto isolamento tra tenant diversi.
 
@@ -146,48 +147,230 @@ router.get('/resources',
 );
 ```
 
-## 4. Ruoli Predefiniti
+## 4. Permessi Individuali
+
+### 4.1 Concetto e Architettura
+
+I permessi individuali consentono di assegnare capacità specifiche direttamente agli utenti, indipendentemente dai loro ruoli. Questo sistema estende il RBAC standard con eccezioni per casi specifici.
+
+Caratteristiche principali:
+- **Granularità**: Permessi specifici per utenti individuali
+- **Priorità**: I permessi individuali hanno priorità sui permessi di ruolo
+- **Temporaneità**: Possono avere una data di scadenza
+- **Tracciabilità**: Registrano chi ha creato il permesso e perché
+
+### 4.2 Modello Dati
+
+Il sistema utilizza il modello `UserAbility` per memorizzare i permessi individuali:
+
+```javascript
+UserAbility.init({
+  id: {
+    type: DataTypes.UUID,
+    defaultValue: DataTypes.UUIDV4,
+    primaryKey: true
+  },
+  user_id: {
+    type: DataTypes.UUID,
+    allowNull: false,
+    // riferimento all'utente
+  },
+  action: {
+    type: DataTypes.STRING,
+    allowNull: false,
+    // create, read, update, delete, manage
+  },
+  subject: {
+    type: DataTypes.STRING,
+    allowNull: false,
+    // modello o entità su cui si applica l'azione
+  },
+  conditions: {
+    type: DataTypes.JSONB,
+    allowNull: true,
+    // condizioni che limitano il permesso a specifici record
+  },
+  fields: {
+    type: DataTypes.ARRAY(DataTypes.STRING),
+    allowNull: true,
+    // campi specifici a cui si applica il permesso
+  },
+  inverted: {
+    type: DataTypes.BOOLEAN,
+    defaultValue: false,
+    // se true, nega il permesso invece di concederlo
+  },
+  priority: {
+    type: DataTypes.INTEGER,
+    defaultValue: 10,
+    // priorità del permesso (più alto ha precedenza)
+  },
+  reason: {
+    type: DataTypes.STRING,
+    allowNull: true,
+    // motivo dell'assegnazione
+  },
+  expires_at: {
+    type: DataTypes.DATE,
+    allowNull: true,
+    // data di scadenza opzionale
+  }
+  // altri campi...
+});
+```
+
+### 4.3 Integrazione con il Sistema Esistente
+
+I permessi individuali sono integrati con il sistema di autorizzazione esistente:
+
+1. L'`abilityService` carica sia le abilities basate su ruolo che quelle individuali
+2. Le abilities vengono ordinate per priorità (quelle individuali hanno tipicamente priorità maggiore)
+3. CASL applica tutte le regole, risolvendo automaticamente i conflitti
+4. Le policy e i middleware esistenti funzionano senza modifiche
+
+### 4.4 API per Gestire i Permessi Individuali
+
+#### Rotte principali:
+```javascript
+// Ottenere tutti i permessi individuali di un utente
+GET /api/users/:userId/abilities
+
+// Ottenere un permesso individuale specifico
+GET /api/users/:userId/abilities/:abilityId
+
+// Creare un nuovo permesso individuale
+POST /api/users/:userId/abilities
+
+// Aggiornare un permesso individuale
+PUT /api/users/:userId/abilities/:abilityId
+
+// Eliminare un permesso individuale
+DELETE /api/users/:userId/abilities/:abilityId
+
+// Ottenere un riassunto di tutti i permessi effettivi di un utente
+GET /api/users/:userId/effective-abilities
+```
+
+#### Esempio di creazione di un permesso individuale:
+```javascript
+// POST /api/users/:userId/abilities
+{
+  "action": "update",
+  "subject": "Filiale",
+  "conditions": { "id": "filiale-specifica-uuid" },
+  "reason": "Sostituzione temporanea responsabile",
+  "expiresAt": "2023-12-31T23:59:59.999Z",
+  "priority": 10
+}
+```
+
+### 4.5 Esempi di Utilizzo
+
+Ecco alcuni scenari in cui i permessi individuali risultano utili:
+
+#### Esempio 1: Autorizzazione Temporanea
+Consente a un Responsabile Filiale di gestire un'altra filiale temporaneamente:
+
+```javascript
+// Permesso per gestire una filiale specifica
+{
+  action: "update",
+  subject: "Filiale",
+  conditions: { id: "filiale-b-uuid" },
+  reason: "Sostituzione temporanea Responsabile Filiale B",
+  expiresAt: "2025-06-01T00:00:00.000Z"
+}
+```
+
+#### Esempio 2: Accesso Granulare a Risorse Multiple
+Permette a un tecnico di vedere asset di filiali diverse:
+
+```javascript
+{
+  action: "read",
+  subject: "Asset",
+  conditions: { 
+    filiale_id: { $in: ["filiale-a-uuid", "filiale-b-uuid"] } 
+  },
+  reason: "Progetto inventario multi-filiale"
+}
+```
+
+#### Esempio 3: Negazione Specifica
+Impedisce a un Amministratore di Sistema di eliminare utenti:
+
+```javascript
+{
+  action: "delete",
+  subject: "User",
+  inverted: true, // Nega il permesso
+  priority: 20    // Priorità alta per sovrascrivere i permessi di ruolo
+}
+```
+
+#### Esempio 4: Limitazione per Campo
+Permette di aggiornare solo determinati campi di un'entità:
+
+```javascript
+{
+  action: "update",
+  subject: "Asset",
+  conditions: { filiale_id: "filiale-utente-uuid" },
+  fields: ["data_ultima_manutenzione", "data_prossima_manutenzione"],
+  reason: "Limitazione ai soli campi di manutenzione"
+}
+```
+
+### 4.6 Considerazioni di Sicurezza
+
+1. **Audit Trail**: Ogni permesso individuale traccia chi lo ha creato, quando e perché
+2. **Pulizia Automatica**: I permessi con scadenza vengono automaticamente ignorati dopo la data di scadenza
+3. **Limitazioni**: Solo gli Amministratori di Sistema possono gestire i permessi individuali
+4. **Priorità**: Il sistema di priorità permette di gestire correttamente i conflitti tra permessi
+
+## 5. Ruoli Predefiniti
 
 Il sistema include i seguenti ruoli predefiniti:
 
-### 4.1 Amministratore di Sistema
+### 5.1 Amministratore di Sistema
 - Accesso completo a tutto il sistema
 - Può gestire utenti, ruoli, e tutte le risorse
+- Può gestire permessi individuali
 
-### 4.2 Ufficio Tecnico
+### 5.2 Ufficio Tecnico
 - Supervisione e amministrazione tecnica
 - Gestione completa degli asset e delle locations
 - Creazione e modifica utenti
 - Lettura ruoli
 
-### 4.3 Ufficio Post Vendita
+### 5.3 Ufficio Post Vendita
 - Lettura completa di asset e locations
 - Modifica degli asset
 - Lettura degli utenti
 
-### 4.4 Area Manager
+### 5.4 Area Manager
 - Gestione delle filiali nella propria area
 - Lettura e modifica asset nella propria area
 - Lettura utenti nella propria area
 
-### 4.5 Responsabile Filiale
+### 5.5 Responsabile Filiale
 - Gestione operativa della propria filiale
 - Gestione completa degli asset nella propria filiale
 - Lettura asset di altre filiali
 - Gestione fornitori
 
-### 4.6 Responsabile Officina e Service
+### 5.6 Responsabile Officina e Service
 - Gestione attrezzature della propria officina
 - Lettura asset di altre filiali
 - Gestione fornitori
 
-### 4.7 Magazzino
+### 5.7 Magazzino
 - Gestione inventario (lettura e aggiornamento)
 - Funzionalità limitate agli asset della propria filiale
 
-## 5. Implementazione delle Policy
+## 6. Implementazione delle Policy
 
-### 5.1 Struttura delle Policy
+### 6.1 Struttura delle Policy
 
 Le policy definiscono la logica di autorizzazione per ciascun modello:
 
@@ -229,7 +412,7 @@ class UserPolicy extends BasePolicy {
 }
 ```
 
-### 5.2 Utilizzo delle Policy nei Controller
+### 6.2 Utilizzo delle Policy nei Controller
 
 ```javascript
 const policy = require('../policies/UserPolicy');
@@ -248,9 +431,9 @@ const updateUser = async (req, res, next) => {
 };
 ```
 
-## 6. Come Estendere il Sistema
+## 7. Come Estendere il Sistema
 
-### 6.1 Aggiungere una Nuova Route Protetta
+### 7.1 Aggiungere una Nuova Route Protetta
 
 ```javascript
 // Nei controller
@@ -271,7 +454,7 @@ router.post('/resource',
 );
 ```
 
-### 6.2 Implementare una Policy per un Nuovo Modello
+### 7.2 Implementare una Policy per un Nuovo Modello
 
 ```javascript
 // 1. Crea un file policy/ResourcePolicy.js
@@ -302,43 +485,86 @@ const policy = require('../policies/ResourcePolicy');
 const canCreate = await policy.canCreate(req.user, req.body);
 ```
 
-### 6.3 Estendere il Service CASL per Nuovi Modelli
+### 7.3 Creare un Permesso Individuale
 
-Quando si aggiunge un nuovo modello che richiede controllo di accesso:
+Per creare un permesso individuale:
 
-1. Assicurarsi che sia referenziato nelle abilities dei ruoli nel `policyBuilder.js`
-2. Implementare una policy dedicata se ha regole di accesso complesse
-3. Aggiungere middleware di permessi alle route appropriate
+```javascript
+// Usando l'API
+const createPermission = async (userId, permissionData) => {
+  const response = await fetch(`/api/users/${userId}/abilities`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${accessToken}`
+    },
+    body: JSON.stringify(permissionData)
+  });
+  
+  return response.json();
+};
 
-## 7. Risoluzione Problemi Comuni
+// Esempio di permissione temporanea
+const tempPermission = {
+  action: 'update',
+  subject: 'Filiale',
+  conditions: { id: 'filiale-123' },
+  reason: 'Sostituzione temporanea',
+  expiresAt: '2025-05-01T00:00:00.000Z'
+};
 
-### 7.1 Token Invalid o Expired
+createPermission('user-456', tempPermission);
+```
+
+### 7.4 Estendere le Funzionalità dei Permessi Individuali
+
+Se si desidera estendere il sistema di permessi individuali, è possibile:
+
+1. Aggiungere nuovi campi al modello `UserAbility`
+2. Estendere il controller `userAbilityController` con nuove funzionalità
+3. Modificare l'`abilityService` per considerare i nuovi campi/funzionalità
+
+## 8. Risoluzione Problemi Comuni
+
+### 8.1 Token Invalid o Expired
 
 Possibili cause:
 - Token scaduto: Il client deve usare il refresh token
 - Secret errato: Verifica le variabili d'ambiente JWT_SECRET
 - Token manipolato: Potenziale tentativo di attacco
 
-### 7.2 Permesso Negato Inaspettatamente
+### 8.2 Permesso Negato Inaspettatamente
 
 Debugging:
 - Verifica i ruoli dell'utente: `console.log(user.roles)`
 - Controlla le abilities generate: utilizzare il logger di debug in `abilityService`
 - Verifica le condizioni nelle policy: aggiungi log nelle policy specifiche
+- Controlla se ci sono permessi individuali in conflitto: usa `GET /api/users/:userId/effective-abilities`
 
-### 7.3 Problemi con Filtraggio Multi-Tenant
+### 8.3 Problemi con Filtraggio Multi-Tenant
 
 - Verifica che le query includano sempre il corretto `tenant_id`
 - Controlla la corretta propagazione di `req.tenantId` attraverso i middleware
 - Verifica che le policy controllino il tenant_id delle risorse
 
-## 8. Best Practices
+### 8.4 Permessi Individuali Non Applicati
+
+Se i permessi individuali non vengono applicati correttamente:
+
+1. Verifica che il permesso non sia scaduto (`expires_at`)
+2. Controlla che la priorità sia sufficientemente alta
+3. Verifica che l'azione e il soggetto corrispondano esattamente
+4. Usa `GET /api/users/:userId/effective-abilities` per vedere tutti i permessi dell'utente
+
+## 9. Best Practices
 
 1. **Usa sempre il middleware `authenticate`** per proteggere le route
 2. **Implementa policy specifiche** per modelli con logica di autorizzazione complessa
 3. **Applica il middleware `checkPermission`** dopo `authenticate` per verificare i permessi
 4. **Verifica esplicitamente i permessi nei controller** usando le policy
-5. **Mantieni i ruoli aggiornati** quando aggiungi nuove funzionalità
+5. **Utilizza i permessi individuali con moderazione** per evitare di complicare la gestione delle autorizzazioni
+6. **Imposta sempre una data di scadenza** per i permessi individuali temporanei
+7. **Documenta i motivi** dell'assegnazione di permessi individuali nel campo `reason`
 
 Per maggiori dettagli implementativi, fare riferimento ai sorgenti:
 - `src/middleware/authMiddleware.js`
@@ -346,3 +572,5 @@ Per maggiori dettagli implementativi, fare riferimento ai sorgenti:
 - `src/services/abilityService.js`
 - `src/services/jwtService.js`
 - `src/policies/BasePolicy.js`
+- `src/models/user-ability.js`
+- `src/api/controllers/userAbilityController.js`

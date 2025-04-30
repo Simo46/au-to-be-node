@@ -29,6 +29,12 @@ module.exports = (sequelize, DataTypes) => {
         otherKey: 'role_id',
         as: 'roles'
       });
+
+      // Relazione con le abilities individuali
+      User.hasMany(models.UserAbility, {
+        foreignKey: 'user_id',
+        as: 'userAbilities'
+      });
     }
     
     // Verifica password

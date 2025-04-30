@@ -16,21 +16,37 @@ class AbilityService {
   async defineAbilityFor(user) {
     try {
       // Se l'utente non è fornito o non ha ruoli, restituisci un'abilità vuota
-      if (!user || !user.roles) {
-        logger.debug('Definizione ability per utente senza ruoli o non autenticato');
+      if (!user) {
+        logger.debug('Definizione ability per utente non autenticato');
         return this.defineGuestAbility();
       }
 
-      // Ottieni tutti i permessi dall'utente e dai suoi ruoli
-      const abilities = await this.extractAbilitiesFromUser(user);
+      // Ottieni tutti i permessi dall'utente (da ruoli e permessi individuali)
+      const roleAbilities = await this.extractAbilitiesFromUser(user);
+      let userAbilities = [];
       
-      logger.debug(`Caricate ${abilities.length} abilities per utente ${user.id}`);
+      // Ottieni i permessi individuali dell'utente
+      if (user.id) {
+        userAbilities = await this.extractIndividualAbilitiesFromUser(user);
+      }
+      
+      // Combina tutte le abilities
+      const allAbilities = [...roleAbilities, ...userAbilities];
+      
+      logger.debug(`Caricate ${allAbilities.length} abilities totali per utente ${user.id}`);
       
       // Crea l'oggetto Ability usando CASL
       const { can, cannot, build } = new AbilityBuilder(Ability);
       
+      // Ordina le abilities per priorità (prima quelle con priorità più alta)
+      allAbilities.sort((a, b) => {
+        const priorityA = a.priority || 1;
+        const priorityB = b.priority || 1;
+        return priorityB - priorityA;
+      });
+      
       // Applica tutti i permessi estratti
-      for (const ability of abilities) {
+      for (const ability of allAbilities) {
         // Gestisce le regole invertite (cannot)
         if (ability.inverted) {
           cannot(ability.action, ability.subject, ability.conditions || {});
@@ -86,7 +102,14 @@ class AbilityService {
       
       if (abilitiesPreloaded) {
         // Se le abilities sono già precaricate, le estrae direttamente
-        return user.roles.flatMap(role => role.abilities || []);
+        return user.roles.flatMap(role => {
+          const abilities = role.abilities || [];
+          // Aggiungi priorità predefinita 1 (più bassa dei permessi individuali)
+          return abilities.map(ability => ({
+            ...ability,
+            priority: ability.priority || 1
+          }));
+        });
       } else {
         // Altrimenti, carica le abilities per ogni ruolo
         const { Role, Ability } = require('../models');
@@ -104,11 +127,63 @@ class AbilityService {
         });
         
         // Estrai e restituisci tutte le abilities
-        return rolesWithAbilities.flatMap(role => role.abilities || []);
+        return rolesWithAbilities.flatMap(role => {
+          const abilities = role.abilities || [];
+          // Aggiungi priorità predefinita 1 (più bassa dei permessi individuali)
+          return abilities.map(ability => ({
+            ...ability.get(),
+            priority: 1
+          }));
+        });
       }
     } catch (error) {
       logger.error({ err: error }, `Errore nell'estrazione delle abilities per utente ${user.id}`);
       throw error;
+    }
+  }
+
+  /**
+   * Estrae tutti i permessi individuali dell'utente
+   * @param {Object} user - Utente
+   * @returns {Array} - Array di oggetti userAbility
+   */
+  async extractIndividualAbilitiesFromUser(user) {
+    try {
+      // Verifica che l'utente abbia un ID
+      if (!user.id) {
+        logger.warn('Impossibile estrarre permessi individuali: utente senza ID');
+        return [];
+      }
+      
+      // Verifica se l'utente ha già le userAbilities precaricate
+      if (user.userAbilities && Array.isArray(user.userAbilities)) {
+        // Filtra per escludere quelle scadute
+        return user.userAbilities
+          .filter(ability => !ability.isExpired())
+          .map(ability => ability.get());
+      }
+      
+      // Altrimenti, carica le userAbilities per l'utente
+      const { UserAbility } = require('../models');
+      
+      // Carica le abilities individuali non scadute
+      const userAbilities = await UserAbility.findAll({
+        where: {
+          user_id: user.id,
+          [sequelize.Op.or]: [
+            { expires_at: null },
+            { expires_at: { [sequelize.Op.gt]: new Date() } }
+          ]
+        }
+      });
+      
+      logger.debug(`Caricate ${userAbilities.length} abilities individuali per utente ${user.id}`);
+      
+      // Converti in oggetti plain per compatibilità
+      return userAbilities.map(ability => ability.get());
+    } catch (error) {
+      logger.error({ err: error }, `Errore nell'estrazione delle abilities individuali per utente ${user.id}`);
+      return []; // In caso di errore, restituisci un array vuoto
     }
   }
 
