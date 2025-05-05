@@ -16,6 +16,7 @@ const assetController = require('./controllers/assetController');
 const attrezzaturaController = require('./controllers/attrezzaturaController');
 const strumentoController = require('./controllers/strumentoController');
 const impiantoController = require('./controllers/impiantoController');
+const userAbilityController = require('./controllers/userAbilityController');
 
 // Routes
 const routes = require('./routes');
@@ -31,6 +32,7 @@ const assetValidators = require('./validators/assetValidators');
 const attrezzaturaValidators = require('./validators/attrezzaturaValidators');
 const strumentoValidators = require('./validators/strumentoValidators');
 const impiantoValidators = require('./validators/impiantoValidators');
+const userAbilityValidators = require('./validators/userAbilityValidators');
 
 module.exports = {
   controllers: {
@@ -43,7 +45,8 @@ module.exports = {
     assetController,
     attrezzaturaController,
     strumentoController,
-    impiantoController
+    impiantoController,
+    userAbilityController
   },
   routes,
   validators: {
@@ -56,6 +59,7 @@ module.exports = {
     assetValidators,
     attrezzaturaValidators,
     strumentoValidators,
-    impiantoValidators
+    impiantoValidators,
+    userAbilityValidators
   }
 };

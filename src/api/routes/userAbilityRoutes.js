@@ -67,7 +67,7 @@ router.delete('/:abilityId',
  * @desc Ottiene un riassunto combinato di tutti i permessi dell'utente
  * @access Private - Solo admin o l'utente stesso
  */
-router.get('/effective',
+router.get('/effective-abilities',
   authenticate,
   userAbilityController.getUserEffectiveAbilities
 );

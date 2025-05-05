@@ -2,6 +2,7 @@
 
 const express = require('express');
 const router = express.Router();
+const userAbilityRoutes = require('./userAbilityRoutes');
 const userController = require('../controllers/userController');
 const userValidators = require('../validators/userValidators');
 const { authenticate } = require('../../middleware/authMiddleware');
@@ -81,5 +82,7 @@ router.post('/:id/roles',
   userValidators.assignRoles,
   userController.assignRoles
 );
+
+router.use('/:userId/abilities', userAbilityRoutes);
 
 module.exports = router;
